@@ -35,7 +35,7 @@ Doc priority on conflict: `rules.md` > `architecture.md` > `prd.md` > `phases.md
 
 ## Working rules (condensed from rules.md)
 - Stay in the **current phase**. Plan first for anything > ~50 lines; wait for approval.
-- Tests with every change. Before "done": `make lint`, `make typecheck`, `make test` (+ `make test-integration` for storage/Airflow/MLflow).
+- Tests with every change. Before "done": `make lint`, `make typecheck`, `make test` (+ `make test-integration` for storage/Airflow/MLflow). `uv run pre-commit run --all-files` before committing.
 - **After each code change, run the `code-reviewer` subagent** (`.claude/agents/code-reviewer.md`) and fix confirmed findings.
 - Never without asking: `terraform apply/destroy`, any AWS write, new dependency, schema/API/manifest contract change, label change, weakening tests/lint/scans, manual model promotion, push to `main`/force-push, invented numbers (use `TBD`).
 - Python 3.12, type hints everywhere, `mypy --strict` on `src/dbdelay/`, ruff `E,F,I,B,UP,S,SIM,RUF,PL`, line length 100. Thin handlers/DAGs/routers; logic in `src/dbdelay/`.
@@ -47,17 +47,27 @@ Doc priority on conflict: `rules.md` > `architecture.md` > `prd.md` > `phases.md
 ## Local environment (checked 2026-09-24)
 - Windows 11, Git Bash + PowerShell. 32 GB RAM, no GPU.
 - **Repo lives on the Windows filesystem**, not WSL (WSL2 has no distro installed). Heavy data (MinIO, Postgres) uses Docker **named volumes** to avoid slow bind mounts.
-- Installed: git 2.55, Node 26, Docker Desktop (daemon must be started), winget.
-- Missing: `uv`, `make`, `gh`, `terraform` (Phase 6), `aws` CLI (Phase 6).
+- Installed: git 2.55, Node 26, Docker Desktop 29.8 (`%LOCALAPPDATA%\Programs\DockerDesktop`, must be started), winget, **uv 0.12.18, GNU make 4.4.1 (ezwinports), gh 2.101** (gh not logged in yet).
+- New winget tools are on PATH only in **new** terminals. In Claude's Bash, prefix:
+  `export PATH="$PATH:/c/Users/yasin/AppData/Local/Microsoft/WinGet/Packages/astral-sh.uv_Microsoft.Winget.Source_8wekyb3d8bbwe:/c/Users/yasin/AppData/Local/Microsoft/WinGet/Packages/ezwinports.make_Microsoft.Winget.Source_8wekyb3d8bbwe/bin:/c/Program Files/GitHub CLI"`
+- Missing: `terraform`, `aws` CLI (Phase 6).
 - git identity: `piyal21` / yasinarafath21@gmail.com.
-- Python env: **`puenktlich/.venv`** (Python 3.12, created by `uv sync`). Always run tools via `uv run …` / `make`. The older `Project_1/.venv` is Python 3.13 → not used (project pins 3.12 to match Lambda). A Windows venv can't be used in Docker/WSL; images install from the same `uv.lock`.
+- Python env: **`puenktlich/.venv`** (Python 3.12, created by `uv sync`). Always run tools via `uv run …` / `make`. The older `Project_1/.venv` is Python 3.13 → not used (project pins 3.12 to match Lambda). A Windows venv can't be used in Docker/WSL; images install their own locked deps.
+- `.env` exists locally with random MinIO/Postgres passwords (never print it).
 - Original doc folder `DB_Delay/` was deleted (2026-09-24); `docs/` is the only copy.
+- Reviewer subagent only registers when the session starts in `puenktlich/`. Otherwise run a `general-purpose` agent told to follow `.claude/agents/code-reviewer.md`.
+
+## Local stack (Phase 0)
+- `make up` → MinIO (pgsty/minio fork, official images gone) :9000 / console :9001, Postgres 17.11 :5432, MLflow 3.16.1 :5000. All on 127.0.0.1, named volumes, one bucket `puenktlich-local` (MLflow artifacts under `mlflow/`).
+- MLflow image: `docker/mlflow/Dockerfile`, deps locked with hashes in `docker/mlflow/requirements.txt` (regen command in its header).
+- `src/dbdelay/`: `config.py` (Settings, `get_settings()` cached, empty env = unset), `errors.py`, `logging.py` (Powertools), `storage.py` (`make_s3_client`, `ObjectStore`: put/get/exists/iter_keys; no delete by design).
 
 ## Status
-- **Current phase: ▶ Phase 0 — Foundations** (not started coding yet).
-- Deferred by owner: AWS account + DB API account → create when needed (Phase 6 / Phase 7). Phase 0 exit criteria for AWS budget are deferred accordingly.
-- Done: repo cloned (was empty); docs copied into `docs/`, README at root; this file + reviewer subagent created.
-- Next: Phase 0 plan approval → install `uv` + `make` → scaffold.
+- **Current phase: ▶ Phase 0 — Foundations.** All non-deferred tasks + exit criteria done (lint/typecheck/test green, 30 unit + 2 integration tests, 100% cov, UIs reachable).
+- Deferred by owner: AWS account (Phase 6), DB API account (**needed in Phase 1** for fixture XML).
+- Open: PR `phase-0/foundations` → `main` (owner merges on GitHub).
+- Next: Phase 1 — Data discovery & contracts (download 2–3 HF months, EDA notebook, station list, Pandera silver schema, ADR 0001).
 
 ## Session log
-- **2026-09-24** — Read all docs; set up CLAUDE.md, reviewer subagent, docs/. Decided: Windows FS + named volumes. Waiting on Phase 0 plan approval.
+- **2026-09-24 (1)** — Read all docs; set up CLAUDE.md, reviewer subagent, docs/. Decided: Windows FS + named volumes.
+- **2026-09-24 (2)** — Phase 0 built: uv/make/gh installed; scaffold, compose stack, base modules + tests. Reviewer: no blockers; fixed empty-env handling, MinIO creds guard, hash-locked MLflow image, pinned images, test cleanup; dropped unused pyyaml. Bootstrap docs commit on `main`; Phase 0 on branch `phase-0/foundations`.

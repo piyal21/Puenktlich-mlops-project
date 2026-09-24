@@ -1,0 +1,48 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+/build/
+/dist/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Local runtime state
+.local/
+/data/
+/mlruns/
+/mlartifacts/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Node (frontend, later)
+node_modules/
+frontend/dist/
+
+# Terraform (later)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings (agents/ is shared)
+.claude/settings.local.json

@@ -359,7 +359,7 @@ Deliberately **not used:** NAT Gateway, load balancers, EC2, RDS, SageMaker endp
 
 ## 9. Run it locally
 
-**Prerequisites:** Docker + Docker Compose, `uv`, Node 20+, `make` (Linux/macOS, or WSL2 on Windows). About 8 GB free RAM for the full stack.
+**Prerequisites:** Docker Desktop (or Docker Engine + Compose), `uv`, Node 20+, GNU `make` (Linux/macOS, or Windows via `winget install ezwinports.make`). About 8 GB free RAM for the full stack.
 
 ```bash
 git clone https://github.com/<you>/puenktlich.git && cd puenktlich

@@ -28,13 +28,13 @@
 **Goal:** a clean repo where `make up` starts the core local services, and an AWS account that can't surprise you with a bill.
 
 Tasks
-- [ ] Create GitHub repo `puenktlich` (public), add license (MIT), `.gitignore`, `.editorconfig`.
+- [x] Create GitHub repo `puenktlich` (actual: `Puenktlich-mlops-project`) (public), add license (MIT), `.gitignore`, `.editorconfig`.
 - [x] Put `prd.md`, `architecture.md`, `rules.md`, `phases.md`, `design.md` into `docs/`; `README.md` at root; add a short `CLAUDE.md` pointing to `docs/rules.md` and `docs/phases.md`.
-- [ ] `uv init` → `pyproject.toml` with package `dbdelay` in `src/`; dev deps: ruff, mypy, pytest, pytest-cov, moto, pre-commit.
-- [ ] `.pre-commit-config.yaml` (ruff, ruff-format, mypy, gitleaks, end-of-file-fixer).
-- [ ] `Makefile` targets: `setup`, `up`, `down`, `logs`, `lint`, `typecheck`, `test`, `test-integration`, `fmt`.
-- [ ] `docker-compose.yml` with **core** services: MinIO (+ bucket init), Postgres, MLflow server (Postgres backend, MinIO artifacts).
-- [ ] `src/dbdelay/config.py` (pydantic-settings), `logging.py`, `errors.py`, `storage.py` (S3/MinIO with endpoint override) + unit tests.
+- [x] `uv init` → `pyproject.toml` with package `dbdelay` in `src/`; dev deps: ruff, mypy, pytest, pytest-cov, moto, pre-commit.
+- [x] `.pre-commit-config.yaml` (ruff, ruff-format, mypy, gitleaks, end-of-file-fixer).
+- [x] `Makefile` targets: `setup`, `up`, `down`, `logs`, `lint`, `typecheck`, `test`, `test-integration`, `fmt`.
+- [x] `docker-compose.yml` with **core** services: MinIO (+ bucket init), Postgres, MLflow server (Postgres backend, MinIO artifacts).
+- [x] `src/dbdelay/config.py` (pydantic-settings), `logging.py`, `errors.py`, `storage.py` (S3/MinIO with endpoint override) + unit tests.
 - [ ] ⏸ *Deferred until Phase 6 (owner decision).* AWS account safety (manual, one time): root MFA, IAM Identity Center admin user, region `eu-central-1`, **AWS Budgets alert at $1** (created manually now; Terraform later), billing alerts email.
 - [ ] ⏸ *Deferred until needed (Phase 1 fixtures or Phase 7).* Register on DB API Marketplace, subscribe to **Timetables** (free plan), store keys in `.env` only.
 

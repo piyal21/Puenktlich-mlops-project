@@ -494,6 +494,7 @@ puenktlich/
 ├── pyproject.toml                  # uv-managed; package `dbdelay` in src/
 ├── uv.lock
 ├── docker-compose.yml              # minio, postgres, mlflow, airflow, api, frontend
+├── docker/mlflow/Dockerfile        # MLflow server image (+ psycopg2, boto3)
 ├── .env.example
 ├── .pre-commit-config.yaml
 ├── .github/
@@ -564,6 +565,7 @@ puenktlich/
 | Frontend | React 19, Vite, Tailwind CSS v4, TanStack Query, React Router, Recharts, lucide-react | Fast, typed, mobile-first |
 | Tests | pytest, moto (AWS mocks), Vitest, Testing Library | |
 | Containers | Docker, Docker Compose | Local parity, Lambda images |
+| Local object store | MinIO via `pgsty/minio` (community fork; official `minio/minio` images are no longer published) | S3-compatible, same API as AWS S3 |
 | Cloud | AWS: Lambda, API Gateway (HTTP), S3, CloudFront, EventBridge Scheduler, SSM, CloudWatch, SNS, ECR, Budgets | Serverless = free-tier friendly |
 | IaC | Terraform ≥ 1.10, tflint | |
 | CI/CD | GitHub Actions, OIDC | |
