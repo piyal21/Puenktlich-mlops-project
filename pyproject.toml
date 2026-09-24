@@ -1,0 +1,75 @@
+[project]
+name = "dbdelay"
+version = "0.1.0"
+description = "Pünktlich — Deutsche Bahn delay risk, end-to-end MLOps"
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "MD Piyal Ahmmed" }]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "aws-lambda-powertools>=3.35,<4",
+    "boto3>=1.43",
+    "pydantic-settings>=2.15",
+]
+
+[dependency-groups]
+dev = [
+    "boto3-stubs[s3]>=1.43",
+    "moto[s3]>=5.2",
+    "mypy>=2.3",
+    "pre-commit>=4.6",
+    "pytest>=9.1",
+    "pytest-cov>=7.1",
+    "ruff>=0.16",
+]
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+# ---------- ruff ----------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+# Docs are prose; their code snippets are illustrations, not formatted source.
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM", "RUF", "PL"]
+
+[tool.ruff.lint.per-file-ignores]
+# assert and hardcoded test credentials are expected in tests
+"tests/**" = ["S101", "S105", "S106", "PLR2004"]
+
+# ---------- mypy ----------
+[tool.mypy]
+python_version = "3.12"
+files = ["src", "tests"]
+strict = true
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+# rules.md: strict for src/dbdelay, normal mode elsewhere
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
+
+[[tool.mypy.overrides]]
+module = ["moto", "moto.*"]
+ignore_missing_imports = true
+
+# ---------- pytest ----------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers -m 'not integration'"
+markers = ["integration: needs the local docker compose stack (MinIO, MLflow)"]
+
+[tool.coverage.run]
+source = ["dbdelay"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

@@ -1,0 +1,90 @@
+# Local training plane (docs/architecture.md §1). Phase 0: core services only.
+# Data lives in named volumes (fast on Docker Desktop for Windows; no slow bind mounts).
+# All ports bind to 127.0.0.1 → not reachable from your network.
+name: puenktlich
+
+services:
+  minio:
+    # Official minio/minio images are no longer published; pgsty/minio is a maintained
+    # community fork of the same code (same S3 API + console).
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:?set STORAGE_ACCESS_KEY_ID in .env}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:?set STORAGE_SECRET_ACCESS_KEY in .env}
+    ports:
+      - "127.0.0.1:9000:9000"   # S3 API
+      - "127.0.0.1:9001:9001"   # web console
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  minio-init:
+    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MC_USER: ${STORAGE_ACCESS_KEY_ID}
+      MC_PASS: ${STORAGE_SECRET_ACCESS_KEY}
+      BUCKET: ${DATA_BUCKET:-puenktlich-local}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - mc alias set local http://minio:9000 "$$MC_USER" "$$MC_PASS" && mc mb --ignore-existing "local/$$BUCKET"
+    restart: "no"
+
+  postgres:
+    image: postgres:17.11-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: mlflow
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d mlflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  mlflow:
+    build: docker/mlflow
+    image: puenktlich/mlflow:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      MLFLOW_BACKEND_STORE_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/mlflow
+      MLFLOW_ARTIFACTS_DESTINATION: s3://${DATA_BUCKET:-puenktlich-local}/mlflow
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: eu-central-1
+    command:
+      - mlflow server --host 0.0.0.0 --port 5000
+        --backend-store-uri "$$MLFLOW_BACKEND_STORE_URI"
+        --artifacts-destination "$$MLFLOW_ARTIFACTS_DESTINATION"
+        --serve-artifacts
+    ports:
+      - "127.0.0.1:5000:5000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  minio-data:
+  postgres-data:
