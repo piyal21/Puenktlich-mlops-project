@@ -3,3 +3,5 @@
 *.jpg binary
 *.parquet binary
 *.gz binary
+# Raw API captures: no line-ending conversion
+tests/fixtures/*.xml -text

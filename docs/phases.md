@@ -36,7 +36,7 @@ Tasks
 - [x] `docker-compose.yml` with **core** services: MinIO (+ bucket init), Postgres, MLflow server (Postgres backend, MinIO artifacts).
 - [x] `src/dbdelay/config.py` (pydantic-settings), `logging.py`, `errors.py`, `storage.py` (S3/MinIO with endpoint override) + unit tests.
 - [ ] ⏸ *Deferred until Phase 6 (owner decision).* AWS account safety (manual, one time): root MFA, IAM Identity Center admin user, region `eu-central-1`, **AWS Budgets alert at $1** (created manually now; Terraform later), billing alerts email.
-- [ ] ⏸ *Deferred until needed (Phase 1 fixtures or Phase 7).* Register on DB API Marketplace, subscribe to **Timetables** (free plan), store keys in `.env` only.
+- [x] *(Done 2026-09-24.)* Register on DB API Marketplace, subscribe to **Timetables** (free plan), store keys in `.env` only.
 
 Exit criteria
 - `make up` → MinIO console, MLflow UI reachable; `make lint typecheck test` green.
@@ -51,13 +51,13 @@ You learn: project scaffolding, uv, pre-commit, Docker Compose, AWS account hygi
 **Goal:** understand the data and freeze the decisions everything else depends on.
 
 Tasks
-- [ ] Download 2–3 months of `monthly_processed_data/data-YYYY-MM.parquet` from HF (`huggingface_hub`).
-- [ ] `notebooks/01_eda.ipynb`: row counts per month/station, missing hours, `delay_in_min` distribution, share ≥ 6 min, cancellations, how `delay_in_min` behaves when no change time exists, cardinality of `line_number`/`final_destination_station`, DST behaviour.
-- [ ] Call the live Timetables API for 2–3 stations; save sample `plan` and `fchg` XML to `tests/fixtures/`; confirm how `s@id` maps to HF `train_line_ride_id` / `train_line_station_num`.
-- [ ] Choose ~30 stations → `configs/stations.yaml` (`eva`, `name`, `state`). Verify each has history across the training window.
-- [ ] Freeze: label definition, cancelled handling, risk thresholds (initial), silver schema v1 → update `architecture.md` §3.3 if anything changed.
-- [ ] Implement `dbdelay/data/schemas.py` (Pandera `SilverDepartures`) + tests.
-- [ ] Write `docs/adr/0001-label-and-leakage-policy.md`.
+- [x] Download 2–3 months of `monthly_processed_data/data-YYYY-MM.parquet` from HF (`huggingface_hub`).
+- [x] `notebooks/01_eda.ipynb`: row counts per month/station, missing hours, `delay_in_min` distribution, share ≥ 6 min, cancellations, how `delay_in_min` behaves when no change time exists, cardinality of `line_number`/`final_destination_station`, DST behaviour.
+- [x] Call the live Timetables API for 2–3 stations; save sample `plan` and `fchg` XML to `tests/fixtures/`; confirm how `s@id` maps to HF `train_line_ride_id` / `train_line_station_num`.
+- [x] Choose ~30 stations → `configs/stations.yaml` (`eva`, `name`, `state`). Verify each has history across the training window.
+- [x] Freeze: label definition, cancelled handling, risk thresholds (initial), silver schema v1 → update `architecture.md` §3.3 if anything changed.
+- [x] Implement `dbdelay/data/schemas.py` (Pandera `SilverDepartures`) + tests.
+- [x] Write `docs/adr/0001-label-and-leakage-policy.md`.
 
 Exit criteria
 - EDA findings summarized at the top of the notebook (5–10 bullet points).
