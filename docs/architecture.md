@@ -157,26 +157,28 @@ Both sources (HF and live) **must** produce exactly this schema. Enforced by `db
 
 | Column | Type | Nullable | Notes |
 |---|---|---|---|
-| `event_id` | string | no | `sha1(eva|ride_id|planned_departure_utc)` — primary key |
-| `eva` | string | no | Station EVA number |
+| `event_id` | string | no | Primary key: lowercase hex SHA-1 of the UTF-8 string `f"{eva}\|{ride_id}\|{planned_departure_utc:%Y-%m-%dT%H:%MZ}"` (identical in both ETLs) |
+| `eva` | string | no | Station EVA number in API form: 7 digits, no leading zero (HF `08000105` → `8000105`) |
 | `station_name` | string | no | |
-| `ride_id` | string | no | Train ride identifier (HF `train_line_ride_id`; live: derived from XML `s@id`, verify format in Phase 1) |
-| `stop_index` | int16 | no | Position of the station within the ride (HF `train_line_station_num`) |
-| `train_type` | string | no | ICE, IC, EC, RE, RB, S, … (uppercased) |
+| `ride_id` | string | no | `s@id` without its stop suffix: `<trip hash>-<YYMMDDHHmm trip start>`. HF: `id` minus suffix (HF `train_line_ride_id` is only the hash and repeats across days) |
+| `stop_index` | int16 | no | Position of the station within the ride, ≥ 1 (= `s@id` suffix = HF `train_line_station_num`) |
+| `train_type` | string | no | Category `tl@c` uppercased: ICE, IC, RE, RB, S, operator codes (VIA, HLB, …) |
 | `train_number` | string | yes | |
 | `line_number` | string | yes | |
 | `final_destination` | string | yes | |
 | `planned_departure_utc` | timestamp[us, UTC] | no | Rows without a planned departure (terminating trains) are dropped |
-| `changed_departure_utc` | timestamp[us, UTC] | yes | Last known changed time |
-| `delay_min` | int16 | yes | `changed − planned` in minutes; null if cancelled |
+| `changed_departure_utc` | timestamp[us, UTC] | yes | Last known changed time; no change reported ⇒ = planned (ADR 0001) |
+| `delay_min` | Int16 | yes | `changed − planned` in minutes; 0 if no change reported; null if cancelled |
 | `is_cancelled` | bool | no | Departure cancelled |
-| `is_late` | bool | yes | `delay_min >= 6`; **null when cancelled** |
+| `is_late` | boolean | yes | `delay_min >= 6`; **null when cancelled** (ADR 0001) |
 | `source` | string | no | `hf` or `live` |
 | `ingested_at` | timestamp[us, UTC] | no | |
 
 Rules:
-- HF timestamps are naive **Europe/Berlin** local time → localize with DST handling (`ambiguous="infer"` fallback to `NaT` + drop + count), then convert to UTC.
-- Deduplicate on `event_id`, keep the row with the latest `ingested_at`.
+- HF timestamps (and live `pt`/`ct`) are naive **Europe/Berlin** local time → localize with `ambiguous="NaT"`, `nonexistent="NaT"`, drop + count those rows, then convert to UTC. (`infer` is unreliable on a flat frame — see EDA §6.)
+- Contract checks (Pandera, no coercion): cancelled ⇒ `delay_min` and `is_late` null; not cancelled ⇒ `changed_departure_utc` set, `delay_min == changed − planned` (minutes) and `is_late == (delay_min >= 6)`.
+- HF conform maps retired EVAs listed under `hf_aliases` in `configs/stations.yaml` onto the station's current EVA (e.g. Berlin Hbf 8011160 → 8098160).
+- Partition by the UTC date of `planned_departure_utc`. HF month files overlap at their edges → deduplicate on `event_id` across files, keep the row with the latest `ingested_at`.
 - Writes overwrite a whole `date=` partition → re-running a day is idempotent.
 
 ### 3.4 Gold — training snapshot
@@ -506,7 +508,7 @@ puenktlich/
 │   ├── runbook.md                  # alarms → what to do
 │   └── adr/                        # 0001-serverless-serving.md …
 ├── configs/
-│   ├── stations.yaml               # supported stations (eva, name, state)
+│   ├── stations.yaml               # supported stations (eva, name, state, optional hf_aliases)
 │   ├── training.yaml               # window, params, gate thresholds
 │   └── monitoring.yaml             # drift/perf thresholds, trigger rules
 ├── src/dbdelay/                    # shared Python package (used everywhere)
@@ -614,3 +616,4 @@ puenktlich/
 5. **Batch shadow scoring for monitoring** — performance measured on all departures, not biased by which stations users query.
 6. **History stays local** — keeps S3 small; AWS holds only live data.
 7. **No pickle anywhere** — LightGBM text format + JSON calibrator; safer and portable.
+8. **Label & leakage policy** — `is_late = delay ≥ 6 min`, cancelled excluded, no change ⇒ on time, timetable-only features in v1 ([ADR 0001](adr/0001-label-and-leakage-policy.md)).
