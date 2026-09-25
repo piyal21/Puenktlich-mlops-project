@@ -1,0 +1,50 @@
+# Supported stations (Phase 1, frozen 2026-09-25). One current, non-S-Bahn EVA per station
+# (API form, 7 digits) — the one live `/plan` serves the long-distance/regional trains on; older
+# EVAs that were merged into it are listed under `hf_aliases`. S-Bahn and platform-group EVAs
+# are not included. `state` = German subdivision code as used by the `holidays` library.
+#
+# Selection rules (see notebooks/01_eda.ipynb §Stations):
+#   - departures on every collected day in the HF sample months 2025-10, 2026-03, 2026-08
+#   - live `/plan` returns data (checked 2026-09-25)
+#   - every federal state covered; mix of large hubs and smaller Hbf (low/high late rates)
+#
+# `hf_aliases`: retired EVAs whose HF history belongs to this station. The HF conform step
+# maps them onto `eva`. Berlin Hbf: until 2026 the upper level (east-west) was 8011160 and the
+# lower level 8098160; DB merged both into 8098160 (live 8011160 is empty since 2026-08).
+# Berlin volume is ~460 departures/day in 2026-08 vs ~730 in 2026-03 with the alias applied: no
+# third EVA and no double listing in HF → a timetable reduction, not an EVA issue.
+# Stuttgart Hbf: in 2026-08 the S-Bahn EVA 8098096 has no rows and S-Bahn trains appear on
+# 8000096 instead (likely a temporary diversion); live (2026-09-25) S-Bahn is back on 8098096
+# → no alias.
+schema_version: 1
+stations:
+  - {eva: "8000013", name: "Augsburg Hbf", state: "BY"}
+  - {eva: "8098160", name: "Berlin Hauptbahnhof", state: "BE", hf_aliases: ["8011160"]}
+  - {eva: "8000050", name: "Bremen Hbf", state: "HB"}
+  - {eva: "8000080", name: "Dortmund Hbf", state: "NW"}
+  - {eva: "8010085", name: "Dresden Hbf", state: "SN"}
+  - {eva: "8000086", name: "Duisburg Hbf", state: "NW"}
+  - {eva: "8000085", name: "Düsseldorf Hbf", state: "NW"}
+  - {eva: "8010101", name: "Erfurt Hbf", state: "TH"}
+  - {eva: "8000098", name: "Essen Hbf", state: "NW"}
+  - {eva: "8000105", name: "Frankfurt (Main) Hbf", state: "HE"}
+  - {eva: "8000115", name: "Fulda", state: "HE"}
+  - {eva: "8010159", name: "Halle (Saale) Hbf", state: "ST"}
+  - {eva: "8002549", name: "Hamburg Hbf", state: "HH"}
+  - {eva: "8000152", name: "Hannover Hbf", state: "NI"}
+  - {eva: "8000191", name: "Karlsruhe Hbf", state: "BW"}
+  - {eva: "8003200", name: "Kassel-Wilhelmshöhe", state: "HE"}
+  - {eva: "8000199", name: "Kiel Hbf", state: "SH"}
+  - {eva: "8000207", name: "Köln Hbf", state: "NW"}
+  - {eva: "8010205", name: "Leipzig Hbf", state: "SN"}
+  - {eva: "8010224", name: "Magdeburg Hbf", state: "ST"}
+  - {eva: "8000240", name: "Mainz Hbf", state: "RP"}
+  - {eva: "8000244", name: "Mannheim Hbf", state: "BW"}
+  - {eva: "8000261", name: "München Hbf", state: "BY"}
+  - {eva: "8000263", name: "Münster (Westf) Hbf", state: "NW"}
+  - {eva: "8000284", name: "Nürnberg Hbf", state: "BY"}
+  - {eva: "8012666", name: "Potsdam Hbf", state: "BB"}
+  - {eva: "8010304", name: "Rostock Hbf", state: "MV"}
+  - {eva: "8000323", name: "Saarbrücken Hbf", state: "SL"}
+  - {eva: "8000096", name: "Stuttgart Hbf", state: "BW"}
+  - {eva: "8000260", name: "Würzburg Hbf", state: "BY"}
