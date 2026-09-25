@@ -9,18 +9,28 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "aws-lambda-powertools>=3.35,<4",
     "boto3>=1.43",
+    "duckdb>=1.5.5",
+    "pandas>=2.2,<3",
+    "pandera>=0.33.1",
+    "pyarrow>=25.0.1",
     "pydantic-settings>=2.15",
+    "pyyaml>=6.0.3",
 ]
 
 [dependency-groups]
 dev = [
     "boto3-stubs[s3]>=1.43",
+    "huggingface-hub>=2.0.0",
+    "jupyter>=1.1.1",
+    "matplotlib>=3.11.2",
     "moto[s3]>=5.2",
     "mypy>=2.3",
+    "pandas-stubs>=2.3,<3",
     "pre-commit>=4.6",
     "pytest>=9.1",
     "pytest-cov>=7.1",
     "ruff>=0.16",
+    "types-pyyaml>=6.0.12.20260906",
 ]
 
 [build-system]
