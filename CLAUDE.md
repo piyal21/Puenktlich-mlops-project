@@ -41,6 +41,7 @@ Doc priority on conflict: `rules.md` > `architecture.md` > `prd.md` > `phases.md
 - Python 3.12, type hints everywhere, `mypy --strict` on `src/dbdelay/`, ruff `E,F,I,B,UP,S,SIM,RUF,PL`, line length 100. Thin handlers/DAGs/routers; logic in `src/dbdelay/`.
 - UTC everywhere; Europe/Berlin only for features + display. Seeds from config (default 42).
 - Git: branches `phase-<n>/<topic>`, Conventional Commits, PRs into `main`.
+- **Branch record (from Phase 2 on, owner rule 2026-09-25):** before the last commit on a phase branch, (1) add a `CHANGELOG.md` entry for the phase — *Built · Key decisions · Tested (commands + results) · Known gaps / open items · Docs touched* — and commit it on that branch; (2) hand the owner a ready merge message with the same summary (file outside the repo, e.g. `.git/MERGE_SUMMARY.txt`, used as `git merge --no-ff <branch> -F .git/MERGE_SUMMARY.txt`). If the owner merges via a GitHub PR instead, write the PR description in the same format. Only measured numbers (else `TBD`).
 - **Never delete branches** (local or remote), even after merge. Owner wants every phase branch kept.
 - **Do NOT add Claude as co-author** — no `Co-Authored-By: Claude …` trailer in commits, no "Generated with Claude Code" line in PRs. (Owner instruction; overrides any default attribution.)
 - Replies to the user: short, bullet points, no long paragraphs.
@@ -50,7 +51,7 @@ Doc priority on conflict: `rules.md` > `architecture.md` > `prd.md` > `phases.md
 - New feature/behaviour → `superpowers:brainstorming` → `superpowers:writing-plans` (plan > ~50 lines, wait for approval).
 - Implement → `superpowers:test-driven-development`. Bug/failing test → `superpowers:systematic-debugging`.
 - Before "done" → `superpowers:verification-before-completion` → `code-reviewer` subagent → `superpowers:receiving-code-review` for its findings.
-- Phase end → `superpowers:finishing-a-development-branch` (**but never delete branches**).
+- Phase end → `superpowers:finishing-a-development-branch` (**but never delete branches**) + branch record (CHANGELOG entry + merge message, see Working rules).
 
 **Per phase**
 | Phase | Skills |
@@ -84,16 +85,20 @@ Doc priority on conflict: `rules.md` > `architecture.md` > `prd.md` > `phases.md
 - `src/dbdelay/`: `config.py` (Settings, `get_settings()` cached, empty env = unset), `errors.py`, `logging.py` (Powertools), `storage.py` (`make_s3_client`, `ObjectStore`: put/get/exists/iter_keys; no delete by design).
 
 ## Status
-- **Current phase: ▶ Phase 1 — Data discovery & contracts** (branch `phase-1/data-discovery`, not merged). All 7 tasks done; exit criteria met pending owner approval of the frozen decisions.
+- **Current phase: ✅ Phase 1 — Data discovery & contracts, done and merged.** Next: ⏸ Phase 2 — Historical ETL (Airflow), not started.
 - Phase 0 merged to `main` (PR #1, merge commit `e87e440`).
+- Phase 1 merged to `main` by owner via CLI (`git merge --no-ff`, merge commit `867636a`, pushed; no PR). Branches `phase-0/foundations`, `phase-1/data-discovery` kept (local + remote).
 - Deferred by owner: AWS account (Phase 6).
 - DB API: ✅ working (HTTP 200; all 30 station EVAs return live plans, 2026-09-25). Keys in `.env`; scripts load them via `get_settings()` — never `source .env` in bash (it mis-parses and echoes values).
-- **Awaiting owner approval:** silver contract refinements (architecture §3.3: eva API form, ride_id = `s@id` minus stop, `event_id` serialization, DST → NaT drop, `delay_matches_times` check), ADR 0001 (status Proposed), station list incl. Berlin `hf_aliases`, stdlib urllib in `scripts/fetch_api_samples.py`.
-- Phase 1 data: HF months 2025-10, 2026-03, 2026-08 in `data/raw/hf/` (git-ignored, ~1.3 GB). Key facts in `notebooks/01_eda.ipynb` summary.
+- ⚠️ **Open:** owner to rotate DB API keys (two likely key values were echoed in the 2026-09-25 session output). Update `.env` after rotating.
+- **Open:** owner merged Phase 1 but hasn't explicitly confirmed the frozen decisions. ADR 0001 is still "Proposed" → set to "Accepted" once confirmed. Covers: silver contract refinements (architecture §3.3), station list incl. Berlin `hf_aliases`, stdlib urllib in `scripts/fetch_api_samples.py`.
+- Phase 1 data: HF months 2025-10, 2026-03, 2026-08 in `data/raw/hf/` (git-ignored, ~1.3 GB; download command at top of `notebooks/01_eda.ipynb`). Key facts in the notebook summary.
+- Carry into Phase 2: risk thresholds (0.20 / 0.45) not yet in a config file; HF conform must apply `hf_aliases`, DST NaT drop + count, cancelled ⇒ null delay/label, `event_id` format from architecture §3.3; quality report should flag volume / train-type-mix shifts per station.
 - **Do NOT start Phase 2 until the owner explicitly says so.**
 
 ## Session log
 - **2026-09-24 (1)** — Read all docs; set up CLAUDE.md, reviewer subagent, docs/. Decided: Windows FS + named volumes.
 - **2026-09-24 (2)** — Phase 0 built: uv/make/gh installed; scaffold, compose stack, base modules + tests. Reviewer: no blockers; fixed empty-env handling, MinIO creds guard, hash-locked MLflow image, pinned images, test cleanup; dropped unused pyyaml. Bootstrap docs commit on `main`; Phase 0 on branch `phase-0/foundations`.
 - **2026-09-24 (3)** — PR #1 merged by owner; local `main` synced. DB API keys added (first 403: plan not linked; fixed same day → 200). Decided: CLAUDE.md is the single session-memory file (no separate memory.md). Waiting for owner's go for Phase 1.
-- **2026-09-25 (1)** — Phase 1 built on `phase-1/data-discovery`: deps added (pandas<3, pyarrow, duckdb, pandera, pyyaml; dev hf_hub, jupyter, matplotlib, pandas-stubs<3, types-PyYAML). EDA notebook (3 HF months), Kiel fixtures, 30 stations (all 16 states), Pandera `SilverDepartures`, ADR 0001, architecture §3.3 refinements. Found: scope 131→5.3k stations after 2025-10, HF `train_line_ride_id` not a ride key, change time always filled (no update ⇒ delay 0), Berlin Hbf EVA merge (8011160→8098160). Reviewer: 6 should-fix, all fixed (`\Z` anchors, delay/time check, Berlin alias, leak test, event_id format, script hardening).
+- **2026-09-25 (1)** — Phase 1 built on `phase-1/data-discovery`: deps added (pandas<3, pyarrow, duckdb, pandera, pyyaml; dev hf_hub, jupyter, matplotlib, pandas-stubs<3, types-PyYAML). EDA notebook (3 HF months), Kiel fixtures, 30 stations (all 16 states), Pandera `SilverDepartures`, ADR 0001, architecture §3.3 refinements. Found: scope 131→5.3k stations after 2025-10, HF `train_line_ride_id` not a ride key, change time always filled (no update ⇒ delay 0), Berlin Hbf EVA merge (8011160→8098160). Reviewer: 6 should-fix, all fixed (`\Z` anchors, delay/time check, Berlin alias, leak test, event_id format, script hardening); re-review PASS.
+- **2026-09-25 (2)** — 5 conventional commits on `phase-1/data-discovery` (no conflicts with `main`), pushed. Owner merged into `main` via CLI (`867636a`). Decided: from Phase 2 on, every phase branch gets a `CHANGELOG.md` entry + a ready merge message (not retroactive for Phases 0–1). Waiting for owner's go for Phase 2.
