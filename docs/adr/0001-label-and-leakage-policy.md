@@ -1,6 +1,6 @@
 # ADR-0001: Label and leakage policy
 
-**Status:** Proposed (awaiting owner approval at the end of Phase 1)
+**Status:** Accepted (owner, 2026-09-26)
 **Date:** 2026-09-25
 **Deciders:** MD Piyal Ahmmed (owner)
 **Evidence:** `notebooks/01_eda.ipynb` (HF months 2025-10, 2026-03, 2026-08; live API samples 2026-09-25)

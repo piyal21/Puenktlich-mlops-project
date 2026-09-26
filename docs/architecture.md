@@ -538,6 +538,7 @@ puenktlich/
 │   ├── src/  pages/  components/  api/  hooks/  styles/  lib/
 │   ├── index.html  vite.config.ts  package.json  tsconfig.json
 ├── infra/                          # see §11
+├── Phases/                        # one plain-language explainer per finished phase + README index
 ├── notebooks/  01_eda.ipynb        # exploration only; logic moves to src/
 ├── scripts/  seed_sample_data.py  rollback.py  set_secrets.sh
 └── tests/

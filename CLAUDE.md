@@ -42,6 +42,7 @@ Doc priority on conflict: `rules.md` > `architecture.md` > `prd.md` > `phases.md
 - UTC everywhere; Europe/Berlin only for features + display. Seeds from config (default 42).
 - Git: branches `phase-<n>/<topic>`, Conventional Commits, PRs into `main`.
 - **Branch record (from Phase 2 on, owner rule 2026-09-25):** before the last commit on a phase branch, (1) add a `CHANGELOG.md` entry for the phase — *Built · Key decisions · Tested (commands + results) · Known gaps / open items · Docs touched* — and commit it on that branch; (2) hand the owner a ready merge message with the same summary (file outside the repo, e.g. `.git/MERGE_SUMMARY.txt`, used as `git merge --no-ff <branch> -F .git/MERGE_SUMMARY.txt`). If the owner merges via a GitHub PR instead, write the PR description in the same format. Only measured numbers (else `TBD`).
+- **Phase doc (every phase, automatically, owner rule 2026-09-26):** at the end of each phase write `Phases/phase-<n>-<topic>.md` — a standalone explainer anyone can follow: goal, what was built (files + why), how it works (diagram if useful), key decisions + reasons, how it was tested (commands + real results), how to run/reproduce it, known gaps, what's next. Plain language, no chat context assumed. Commit it on the phase branch together with the CHANGELOG entry. `Phases/README.md` is the index (one line per phase).
 - **Never delete branches** (local or remote), even after merge. Owner wants every phase branch kept.
 - **Do NOT add Claude as co-author** — no `Co-Authored-By: Claude …` trailer in commits, no "Generated with Claude Code" line in PRs. (Owner instruction; overrides any default attribution.)
 - Replies to the user: short, bullet points, no long paragraphs.
@@ -51,7 +52,7 @@ Doc priority on conflict: `rules.md` > `architecture.md` > `prd.md` > `phases.md
 - New feature/behaviour → `superpowers:brainstorming` → `superpowers:writing-plans` (plan > ~50 lines, wait for approval).
 - Implement → `superpowers:test-driven-development`. Bug/failing test → `superpowers:systematic-debugging`.
 - Before "done" → `superpowers:verification-before-completion` → `code-reviewer` subagent → `superpowers:receiving-code-review` for its findings.
-- Phase end → `superpowers:finishing-a-development-branch` (**but never delete branches**) + branch record (CHANGELOG entry + merge message, see Working rules).
+- Phase end → `superpowers:finishing-a-development-branch` (**but never delete branches**) + branch record (CHANGELOG entry + merge message) + phase doc in `Phases/` (see Working rules).
 
 **Per phase**
 | Phase | Skills |
@@ -85,16 +86,19 @@ Doc priority on conflict: `rules.md` > `architecture.md` > `prd.md` > `phases.md
 - `src/dbdelay/`: `config.py` (Settings, `get_settings()` cached, empty env = unset), `errors.py`, `logging.py` (Powertools), `storage.py` (`make_s3_client`, `ObjectStore`: put/get/exists/iter_keys; no delete by design).
 
 ## Status
-- **Current phase: ✅ Phase 1 — Data discovery & contracts, done and merged.** Next: ⏸ Phase 2 — Historical ETL (Airflow), not started.
+- **Current phase: ▶ Phase 2 — Historical ETL (Airflow)** on branch `phase-2/hf-backfill` (owner go 2026-09-26). Training window: 9 months (2025-12 → 2026-08, DAG param). Plan must be approved before code.
+- Phase 1 ✅ done and merged.
 - Phase 0 merged to `main` (PR #1, merge commit `e87e440`).
 - Phase 1 merged to `main` by owner via CLI (`git merge --no-ff`, merge commit `867636a`, pushed; no PR). Branches `phase-0/foundations`, `phase-1/data-discovery` kept (local + remote).
 - Deferred by owner: AWS account (Phase 6).
 - DB API: ✅ working (HTTP 200; all 30 station EVAs return live plans, 2026-09-25). Keys in `.env`; scripts load them via `get_settings()` — never `source .env` in bash (it mis-parses and echoes values).
 - ⚠️ **Open:** owner to rotate DB API keys (two likely key values were echoed in the 2026-09-25 session output). Update `.env` after rotating.
-- **Open:** owner merged Phase 1 but hasn't explicitly confirmed the frozen decisions. ADR 0001 is still "Proposed" → set to "Accepted" once confirmed. Covers: silver contract refinements (architecture §3.3), station list incl. Berlin `hf_aliases`, stdlib urllib in `scripts/fetch_api_samples.py`.
+- Phase 1 decisions **confirmed by owner 2026-09-26** (ADR 0001 → Accepted): label, leakage policy, silver contract (architecture §3.3), station list incl. Berlin `hf_aliases`, stdlib urllib in the dev fetch script.
+- **Phase 7 must-do (risk #1):** "no change reported ⇒ on time" hides late trains if live ingestion misses fchg windows → record per stop whether it was seen in fchg, flag ingestion-gap days in monitoring, reconcile live vs HF on overlapping days.
+- Phase 7/9: alert when a station's live board is empty (EVA drift like Berlin) → fix via `hf_aliases`.
 - Phase 1 data: HF months 2025-10, 2026-03, 2026-08 in `data/raw/hf/` (git-ignored, ~1.3 GB; download command at top of `notebooks/01_eda.ipynb`). Key facts in the notebook summary.
 - Carry into Phase 2: risk thresholds (0.20 / 0.45) not yet in a config file; HF conform must apply `hf_aliases`, DST NaT drop + count, cancelled ⇒ null delay/label, `event_id` format from architecture §3.3; quality report should flag volume / train-type-mix shifts per station.
-- **Do NOT start Phase 2 until the owner explicitly says so.**
+- **Do NOT start Phase 3 until the owner explicitly says so.**
 
 ## Session log
 - **2026-09-24 (1)** — Read all docs; set up CLAUDE.md, reviewer subagent, docs/. Decided: Windows FS + named volumes.
