@@ -473,6 +473,11 @@ dependencies = [
     { name = "pyyaml" },
 ]
 
+[package.optional-dependencies]
+pipelines = [
+    { name = "huggingface-hub" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "boto3-stubs", extra = ["s3"] },
@@ -494,12 +499,14 @@ requires-dist = [
     { name = "aws-lambda-powertools", specifier = ">=3.35,<4" },
     { name = "boto3", specifier = ">=1.43" },
     { name = "duckdb", specifier = ">=1.5.5" },
+    { name = "huggingface-hub", marker = "extra == 'pipelines'", specifier = ">=2.0.0" },
     { name = "pandas", specifier = ">=2.2,<3" },
     { name = "pandera", specifier = ">=0.33.1" },
     { name = "pyarrow", specifier = ">=25.0.1" },
     { name = "pydantic-settings", specifier = ">=2.15" },
     { name = "pyyaml", specifier = ">=6.0.3" },
 ]
+provides-extras = ["pipelines"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -17,6 +17,10 @@ dependencies = [
     "pyyaml>=6.0.3",
 ]
 
+[project.optional-dependencies]
+# Installed in the Airflow image (and in the dev venv via the dev group); not in Lambda images.
+pipelines = ["huggingface-hub>=2.0.0"]
+
 [dependency-groups]
 dev = [
     "boto3-stubs[s3]>=1.43",
