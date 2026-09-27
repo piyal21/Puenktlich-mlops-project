@@ -7,8 +7,9 @@ import pytest
 from moto import mock_aws
 
 from dbdelay.config import Settings
+from dbdelay.data.quality import content_hash
 from dbdelay.data.schemas import validate_silver
-from dbdelay.data.silver import content_hash, make_event_id, silver_key, write_silver_month
+from dbdelay.data.silver import make_event_id, silver_key, write_silver_month
 from dbdelay.storage import ObjectStore, make_s3_client
 from tests.builders import read_parquet_bytes, silver_frame
 

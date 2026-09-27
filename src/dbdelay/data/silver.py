@@ -139,13 +139,6 @@ def write_silver_month(
     return counts
 
 
-def content_hash(df: pd.DataFrame) -> str:
-    """Order-independent SHA-256 of a silver frame's values."""
-    ordered = df[list(SILVER_COLUMNS)].sort_values("event_id").reset_index(drop=True)
-    row_hashes = pd.util.hash_pandas_object(ordered, index=False).to_numpy()
-    return hashlib.sha256(row_hashes.tobytes()).hexdigest()
-
-
 DROP_REASONS: tuple[str, ...] = (
     "not_supported_station",
     "dst_ambiguous_or_nonexistent",
