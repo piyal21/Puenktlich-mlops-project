@@ -19,12 +19,13 @@ dependencies = [
 
 [project.optional-dependencies]
 # Installed in the Airflow image (and in the dev venv via the dev group); not in Lambda images.
-pipelines = ["huggingface-hub>=2.0.0"]
+# <2: huggingface-hub 2.x conflicts with packages preinstalled in the Airflow image.
+pipelines = ["huggingface-hub>=0.30,<2"]
 
 [dependency-groups]
 dev = [
     "boto3-stubs[s3]>=1.43",
-    "huggingface-hub>=2.0.0",
+    "huggingface-hub>=0.30,<2",
     "jupyter>=1.1.1",
     "matplotlib>=3.11.2",
     "moto[s3]>=5.2",

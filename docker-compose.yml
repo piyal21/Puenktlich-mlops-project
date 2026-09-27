@@ -1,7 +1,39 @@
-# Local training plane (docs/architecture.md §1). Phase 0: core services only.
+# Local training plane (docs/architecture.md §1). Core services + Airflow (profile "airflow").
 # Data lives in named volumes (fast on Docker Desktop for Windows; no slow bind mounts).
 # All ports bind to 127.0.0.1 → not reachable from your network.
 name: puenktlich
+
+x-airflow-common: &airflow-common
+  profiles: ["airflow"]
+  build:
+    context: .
+    dockerfile: pipelines/airflow/Dockerfile
+  image: puenktlich/airflow:local
+  volumes:
+    - ./pipelines/airflow/dags:/opt/airflow/dags:ro
+    - ./pipelines/airflow/tests:/opt/airflow/tests:ro
+    - ./configs:/opt/airflow/configs:ro
+    - airflow-logs:/opt/airflow/logs
+
+x-airflow-env: &airflow-env
+  AIRFLOW__CORE__EXECUTOR: LocalExecutor
+  AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+  AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/airflow
+  AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?run make airflow-env}
+  AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY:?run make airflow-env}
+  AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_SECRET_KEY:?run make airflow-env}
+  AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-api-server:8080/execution/
+  AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+  AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+  AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+  POSTGRES_USER: ${POSTGRES_USER}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  STORAGE_ENDPOINT_URL: http://minio:9000
+  STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID}
+  STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY}
+  DATA_BUCKET: ${DATA_BUCKET:-puenktlich-local}
+  STATIONS_FILE: /opt/airflow/configs/stations.yaml
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
 services:
   minio:
@@ -85,6 +117,74 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  # ---------------- Airflow 3 (Phase 2) — `make airflow-up` (profile "airflow") ----------------
+  airflow-init:
+    <<: *airflow-common
+    environment:
+      <<: *airflow-env
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:?run make airflow-env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    user: "0:0"
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        python /opt/airflow/init/create_db.py &&
+        mkdir -p /opt/airflow/logs && chown -R 50000:0 /opt/airflow/logs &&
+        /entrypoint airflow version
+    restart: "no"
+
+  airflow-api-server:
+    <<: *airflow-common
+    environment: *airflow-env
+    command: api-server
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on: &after-init
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  airflow-scheduler:
+    <<: *airflow-common
+    environment: *airflow-env
+    command: scheduler
+    depends_on: *after-init
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 20s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    environment: *airflow-env
+    command: dag-processor
+    depends_on: *after-init
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type DagProcessorJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 20s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
 volumes:
   minio-data:
   postgres-data:
+  airflow-logs:

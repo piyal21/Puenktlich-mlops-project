@@ -4,7 +4,7 @@
 .DEFAULT_GOAL := help
 COMPOSE := docker compose
 
-.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check
+.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill
 
 help: ## Show available targets
 	@uv run python -c "import re; [print(f'{m[0]:<18} {m[1]}') for m in re.findall(r'^([a-z-]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -44,3 +44,19 @@ test-integration: ## Integration tests against the running local stack
 	uv run pytest tests/integration -m integration
 
 check: lint typecheck test ## Everything CI runs locally
+
+airflow-env: ## Add missing Airflow secrets to .env (values never printed)
+	uv run python scripts/ensure_airflow_env.py
+
+airflow-up: ## Start Airflow 3 (api-server :8080, scheduler, dag-processor) + core stack
+	$(COMPOSE) --profile airflow up -d --build --wait
+
+airflow-down: ## Stop Airflow and the core stack (volumes kept)
+	$(COMPOSE) --profile airflow down
+
+test-dags: ## Parse the DAGs inside the Airflow image
+	$(COMPOSE) --profile airflow run --rm --no-deps --entrypoint python airflow-scheduler /opt/airflow/tests/check_dags.py
+
+backfill: ## Unpause and trigger backfill_history with its default 9 months
+	$(COMPOSE) --profile airflow exec airflow-scheduler airflow dags unpause backfill_history
+	$(COMPOSE) --profile airflow exec airflow-scheduler airflow dags trigger backfill_history
