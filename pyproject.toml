@@ -56,6 +56,9 @@ select = ["E", "F", "I", "B", "UP", "S", "SIM", "RUF", "PL"]
 [tool.ruff.lint.per-file-ignores]
 # assert and hardcoded test credentials are expected in tests
 "tests/**" = ["S101", "S105", "S106", "PLR2004"]
+# Airflow best practice: heavy imports inside tasks, not at DAG-file top level
+# (the dag-processor re-parses DAG files every ~30 s).
+"pipelines/airflow/dags/**" = ["PLC0415"]
 
 # ---------- mypy ----------
 [tool.mypy]
