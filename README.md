@@ -382,6 +382,7 @@ open http://localhost:5173    # the app
 | MinIO console | http://localhost:9001 |
 
 Useful commands: `make test`, `make test-integration`, `make lint`, `make typecheck`, `make rollback`, `make down`.
+History backfill (Phase 2): `make airflow-env` (once) → `make airflow-up` → `make backfill`; `make test-dags` checks the DAGs.
 
 ---
 

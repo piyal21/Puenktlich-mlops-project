@@ -37,7 +37,7 @@ triggerer service (needed only for deferrable sensors, Phase 9).
 bronze/hf/month=YYYY-MM/data.parquet          # HF file, byte-identical
 bronze/hf/month=YYYY-MM/_manifest.json        # {month, hf_repo, hf_path, hf_revision, sha256, size_bytes, downloaded_at}
 silver/departures/source=hf/date=YYYY-MM-DD/part-0.parquet      # contract rows, one file per UTC day
-silver/_quarantine/source=hf/date=YYYY-MM-DD/part-0.parquet     # rejected rows + `quarantine_reason`
+silver/_quarantine/source=hf/month=YYYY-MM/part-0.parquet       # rejected rows + `quarantine_reason` (one file per month)
 silver/_quality/source=hf/month=YYYY-MM.json                    # quality report
 ```
 
@@ -80,8 +80,9 @@ any change fully replaces the previous output and no stale partition can survive
 - `content_hash(df) -> str` — stable hash of the sorted frame (used by tests and the quality report).
 
 ### `src/dbdelay/data/quality.py`
-- `split_quarantine(df) -> (ok, quarantined)` with reasons: `bad_ride_id`, `bad_stop_index`, `missing_train_type`,
-  `delay_mismatch`, `label_mismatch`, `missing_changed_time` (row-level versions of the contract checks).
+- `split_quarantine(df) -> (ok, quarantined)` with reasons (as implemented): `bad_id` (covers ride id + stop index),
+  `missing_train_type`, `missing_cancel_flag`, `missing_delay`, `delay_mismatch` (incl. missing changed time);
+  `conform_hf` adds `delay_mismatch_utc` for trains straddling a DST switch.
 - `QualityReport` (pydantic) + `build_report(...)`: rows in / after station filter / out; drops and quarantine by
   reason; null rates per column; late and cancelled rate; per-station daily counts with flags
   (`volume_drop`: a day < 50 % of the station's monthly median; `low_volume_hours` 06–21 local < 25 % of that hour's

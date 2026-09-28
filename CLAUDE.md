@@ -83,10 +83,14 @@ Doc priority on conflict: `rules.md` > `architecture.md` > `prd.md` > `phases.md
 ## Local stack (Phase 0)
 - `make up` → MinIO (pgsty/minio fork, official images gone) :9000 / console :9001, Postgres 17.11 :5432, MLflow 3.16.1 :5000. All on 127.0.0.1, named volumes, one bucket `puenktlich-local` (MLflow artifacts under `mlflow/`).
 - MLflow image: `docker/mlflow/Dockerfile`, deps locked with hashes in `docker/mlflow/requirements.txt` (regen command in its header).
-- `src/dbdelay/`: `config.py` (Settings, `get_settings()` cached, empty env = unset), `errors.py`, `logging.py` (Powertools), `storage.py` (`make_s3_client`, `ObjectStore`: put/get/exists/iter_keys; no delete by design).
+- `src/dbdelay/`: `config.py` (Settings, `get_settings()` cached, empty env = unset), `errors.py`, `logging.py` (Powertools), `storage.py` (`make_s3_client`, `ObjectStore`: put/get/upload_file/download_file/exists/iter_keys; no delete by design). Phase 2: `data/months.py`, `data/stations.py`, `data/silver.py`, `data/quality.py`, `data/hf_backfill.py`.
 
 ## Status
-- **Current phase: ▶ Phase 2 — Historical ETL (Airflow)** on branch `phase-2/hf-backfill` (owner go 2026-09-26). Training window: 9 months (2025-12 → 2026-08, DAG param). Plan must be approved before code.
+- **Current phase: ✅ Phase 2 — Historical ETL (Airflow) done** on branch `phase-2/hf-backfill`, pushed, **waiting for owner merge** (`git merge --no-ff phase-2/hf-backfill -F .git/MERGE_SUMMARY.txt`). Spec `docs/superpowers/specs/2026-09-26-phase-2-hf-backfill-design.md`, plan `docs/superpowers/plans/2026-09-27-phase-2-hf-backfill.md`.
+- Phase 2 data in MinIO: bronze 9 months (2025-12 → 2026-08, ~650 MB each), silver 274 day files, 3,724,008 rows; quarantine + quality JSON per month (`silver/_quarantine/…`, `silver/_quality/…`).
+- Airflow: `make airflow-env` (fills missing/`change-me` secrets) → `make airflow-up` → UI :8080 → `make backfill`. Image installs under Airflow constraints-3.3.2 minus `pandas==` (project pins pandas<3); `huggingface-hub<2`. New DAG files need `docker compose restart airflow-dag-processor` (or wait for bundle refresh).
+- ⚠️ **PC sleep kills running tasks:** containers freeze, task JWT (10 min) expires → 403 on heartbeat → task failed. Keep the PC awake during backfills; recover with a clear of failed TIs or a re-trigger (ingest skips existing months, silver is idempotent).
+- Phase 2 deferred minors (review 2026-09-28): httpx errors not wrapped in `hf_download`; Berlin alias dup tie-break by id string; report lacks pre-conform counts (`not_supported_station` always 0); quarantine parquet has no fixed schema + can double-count overlap rows; `plan_months` retries bad input; `build_silver` retries=0 also for transient MinIO errors; `force_download` of M doesn't rebuild M±1.
 - Phase 1 ✅ done and merged.
 - Phase 0 merged to `main` (PR #1, merge commit `e87e440`).
 - Phase 1 merged to `main` by owner via CLI (`git merge --no-ff`, merge commit `867636a`, pushed; no PR). Branches `phase-0/foundations`, `phase-1/data-discovery` kept (local + remote).
@@ -97,7 +101,7 @@ Doc priority on conflict: `rules.md` > `architecture.md` > `prd.md` > `phases.md
 - **Phase 7 must-do (risk #1):** "no change reported ⇒ on time" hides late trains if live ingestion misses fchg windows → record per stop whether it was seen in fchg, flag ingestion-gap days in monitoring, reconcile live vs HF on overlapping days.
 - Phase 7/9: alert when a station's live board is empty (EVA drift like Berlin) → fix via `hf_aliases`.
 - Phase 1 data: HF months 2025-10, 2026-03, 2026-08 in `data/raw/hf/` (git-ignored, ~1.3 GB; download command at top of `notebooks/01_eda.ipynb`). Key facts in the notebook summary.
-- Carry into Phase 2: risk thresholds (0.20 / 0.45) not yet in a config file; HF conform must apply `hf_aliases`, DST NaT drop + count, cancelled ⇒ null delay/label, `event_id` format from architecture §3.3; quality report should flag volume / train-type-mix shifts per station.
+- Carry into Phase 3: risk thresholds (0.20 / 0.45) not yet in a config file; data gaps flagged in the quality reports (low-volume hours e.g. 2026-03-16 18–21h, 2026-04-08 06–11h; Potsdam Hbf low volume 2026-03-23…31) — decide whether to mask them in training; train-type-mix shift flag not built.
 - **Do NOT start Phase 3 until the owner explicitly says so.**
 
 ## Session log
@@ -106,3 +110,6 @@ Doc priority on conflict: `rules.md` > `architecture.md` > `prd.md` > `phases.md
 - **2026-09-24 (3)** — PR #1 merged by owner; local `main` synced. DB API keys added (first 403: plan not linked; fixed same day → 200). Decided: CLAUDE.md is the single session-memory file (no separate memory.md). Waiting for owner's go for Phase 1.
 - **2026-09-25 (1)** — Phase 1 built on `phase-1/data-discovery`: deps added (pandas<3, pyarrow, duckdb, pandera, pyyaml; dev hf_hub, jupyter, matplotlib, pandas-stubs<3, types-PyYAML). EDA notebook (3 HF months), Kiel fixtures, 30 stations (all 16 states), Pandera `SilverDepartures`, ADR 0001, architecture §3.3 refinements. Found: scope 131→5.3k stations after 2025-10, HF `train_line_ride_id` not a ride key, change time always filled (no update ⇒ delay 0), Berlin Hbf EVA merge (8011160→8098160). Reviewer: 6 should-fix, all fixed (`\Z` anchors, delay/time check, Berlin alias, leak test, event_id format, script hardening); re-review PASS.
 - **2026-09-25 (2)** — 5 conventional commits on `phase-1/data-discovery` (no conflicts with `main`), pushed. Owner merged into `main` via CLI (`867636a`). Decided: from Phase 2 on, every phase branch gets a `CHANGELOG.md` entry + a ready merge message (not retroactive for Phases 0–1). Waiting for owner's go for Phase 2.
+- **2026-09-26** — Owner go for Phase 2; branch `phase-2/hf-backfill`. Added `Phases/` folder rule + Phase 0/1 docs; ADR 0001 Accepted. Brainstormed → spec (split Airflow services, DuckDB filter + pandas conform) approved.
+- **2026-09-27** — Plan written; native execution. Tasks 1–10 built (TDD, 145 unit tests). Image deps conflicted → owner chose Airflow constraints. Real backfill triggered; PC sleep caused 403s.
+- **2026-09-28** — Docker Desktop engine hung (500s) → owner restarted it. Final review (opus): 0 Critical, 2 Important fixed (placeholder Airflow secrets, streaming bronze), 8 Minor deferred. Backfill finished (9 months, 3,724,008 silver rows); second run on the fixed image for determinism. CHANGELOG + `Phases/phase-2-hf-backfill.md` written; branch pushed; merge message in `.git/MERGE_SUMMARY.txt`. Waiting for owner merge and go for Phase 3.
