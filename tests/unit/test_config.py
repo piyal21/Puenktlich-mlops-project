@@ -69,3 +69,11 @@ def test_empty_env_values_mean_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = get_settings()
     assert settings.db_api_key is None
     assert settings.storage_endpoint_url is None
+
+
+def test_stations_file_defaults_to_repo_config_and_reads_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert Settings(_env_file=None).stations_file == Path("configs/stations.yaml")  # type: ignore[call-arg]
+    monkeypatch.setenv("STATIONS_FILE", "/opt/airflow/configs/stations.yaml")
+    assert Settings(_env_file=None).stations_file == Path("/opt/airflow/configs/stations.yaml")  # type: ignore[call-arg]

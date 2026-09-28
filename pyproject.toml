@@ -17,10 +17,15 @@ dependencies = [
     "pyyaml>=6.0.3",
 ]
 
+[project.optional-dependencies]
+# Installed in the Airflow image (and in the dev venv via the dev group); not in Lambda images.
+# <2: huggingface-hub 2.x conflicts with packages preinstalled in the Airflow image.
+pipelines = ["huggingface-hub>=0.30,<2"]
+
 [dependency-groups]
 dev = [
     "boto3-stubs[s3]>=1.43",
-    "huggingface-hub>=2.0.0",
+    "huggingface-hub>=0.30,<2",
     "jupyter>=1.1.1",
     "matplotlib>=3.11.2",
     "moto[s3]>=5.2",
@@ -51,6 +56,9 @@ select = ["E", "F", "I", "B", "UP", "S", "SIM", "RUF", "PL"]
 [tool.ruff.lint.per-file-ignores]
 # assert and hardcoded test credentials are expected in tests
 "tests/**" = ["S101", "S105", "S106", "PLR2004"]
+# Airflow best practice: heavy imports inside tasks, not at DAG-file top level
+# (the dag-processor re-parses DAG files every ~30 s).
+"pipelines/airflow/dags/**" = ["PLC0415"]
 
 # ---------- mypy ----------
 [tool.mypy]
@@ -68,6 +76,11 @@ disallow_untyped_decorators = false
 
 [[tool.mypy.overrides]]
 module = ["moto", "moto.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# pyarrow ships no type information (stubs would be a new dependency)
+module = ["pyarrow", "pyarrow.*"]
 ignore_missing_imports = true
 
 # ---------- pytest ----------

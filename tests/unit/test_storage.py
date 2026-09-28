@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -125,3 +126,35 @@ def test_endpoint_without_credentials_raises_config_error() -> None:
     )
     with pytest.raises(ConfigError, match="STORAGE_ACCESS_KEY_ID"):
         make_s3_client(settings)
+
+
+def test_upload_file_then_download_file_roundtrip(store: ObjectStore, tmp_path: Path) -> None:
+    source = tmp_path / "in.parquet"
+    source.write_bytes(b"PAR1" * 1000)
+    store.upload_file("bronze/hf/month=2026-03/data.parquet", source)
+
+    target = tmp_path / "out.parquet"
+    store.download_file("bronze/hf/month=2026-03/data.parquet", target)
+
+    assert target.read_bytes() == source.read_bytes()
+
+
+def test_download_file_missing_key_raises_not_found(store: ObjectStore, tmp_path: Path) -> None:
+    with pytest.raises(NotFoundError):
+        store.download_file("bronze/missing.parquet", tmp_path / "x")
+
+
+def test_file_transfers_wrap_storage_errors(
+    s3_client: "S3Client", tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "in.bin"
+    source.write_bytes(b"x")
+    with pytest.raises(ExternalServiceError):
+        ObjectStore(s3_client, "no-such-bucket").upload_file("k", source)
+
+    def unreachable(*_: Any, **__: Any) -> None:
+        raise EndpointConnectionError(endpoint_url="http://minio:9000")
+
+    monkeypatch.setattr(s3_client, "download_file", unreachable)
+    with pytest.raises(ExternalServiceError):
+        ObjectStore(s3_client, BUCKET).download_file("k", tmp_path / "out.bin")

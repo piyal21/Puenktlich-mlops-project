@@ -5,6 +5,7 @@ this module only holds environment-specific settings (see docs/architecture.md Â
 """
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import SecretStr, ValidationError
@@ -47,6 +48,9 @@ class Settings(BaseSettings):
     db_api_key: SecretStr | None = None
 
     mlflow_tracking_uri: str = "http://localhost:5000"
+
+    # Station list (relative to the working directory; containers set an absolute path).
+    stations_file: Path = Path("configs/stations.yaml")
 
 
 @lru_cache(maxsize=1)

@@ -149,7 +149,16 @@ s3://puenktlich-web-<acct>/                 (private; only CloudFront OAC can re
     └── reports/YYYY-MM-DD.html             # Evidently drift report
 ```
 
-Local MinIO mirrors the same layout in bucket `puenktlich-local` (plus `bronze/hf/…`, `silver/departures/source=hf/…`, `gold/training_sets/<snapshot_id>/…`).
+Local MinIO mirrors the same layout in bucket `puenktlich-local`, plus the history layers written by `backfill_history` (Phase 2):
+
+```
+bronze/hf/month=YYYY-MM/data.parquet                         # HF monthly file, byte-identical
+bronze/hf/month=YYYY-MM/_manifest.json                       # hf_revision, sha256, size, downloaded_at (= silver ingested_at)
+silver/departures/source=hf/date=YYYY-MM-DD/part-0.parquet   # one file per UTC day, every day of a built month (empty allowed)
+silver/_quarantine/source=hf/month=YYYY-MM/part-0.parquet    # rejected rows + quarantine_reason
+silver/_quality/source=hf/month=YYYY-MM.json                 # quality report (rows, drops, quarantine, rates, flags, content hash)
+gold/training_sets/<snapshot_id>/…                           # Phase 3–4
+```
 
 ### 3.3 Silver contract — `silver/departures` (schema version 1)
 
@@ -533,11 +542,14 @@ puenktlich/
 │       └── Dockerfile
 ├── pipelines/airflow/
 │   ├── dags/  backfill_history.py  training_pipeline.py  drift_watch.py
-│   └── Dockerfile                  # apache/airflow:3.x + `dbdelay`
+│   ├── init/create_db.py           # creates the `airflow` DB in the shared Postgres
+│   ├── tests/check_dags.py         # DAG import/shape check (`make test-dags`)
+│   └── Dockerfile                  # apache/airflow:3.3.2 + `dbdelay[pipelines]` (Airflow constraints)
 ├── frontend/
 │   ├── src/  pages/  components/  api/  hooks/  styles/  lib/
 │   ├── index.html  vite.config.ts  package.json  tsconfig.json
 ├── infra/                          # see §11
+├── Phases/                        # one plain-language explainer per finished phase + README index
 ├── notebooks/  01_eda.ipynb        # exploration only; logic moves to src/
 ├── scripts/  seed_sample_data.py  rollback.py  set_secrets.sh
 └── tests/

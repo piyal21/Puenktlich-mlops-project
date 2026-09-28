@@ -72,12 +72,12 @@ You learn: EDA for ML systems, data contracts, leakage awareness.
 **Goal:** a reliable, re-runnable pipeline that turns HF monthly files into validated silver partitions.
 
 Tasks
-- [ ] Add Airflow 3 to `docker-compose.yml` (profile `airflow`, LocalExecutor, Postgres metadata DB, custom image with `dbdelay` installed).
-- [ ] `dbdelay/data/hf_backfill.py`: download month → bronze (MinIO) → filter stations → conform to silver schema (tz localize Europe/Berlin → UTC, `event_id`, `is_late`) → dedupe.
-- [ ] `dbdelay/data/quality.py`: per-partition stats (rows in/out, drop reasons, null rates, late rate) + quarantine.
-- [ ] DAG `backfill_history`: params `months: list[str]`; dynamic task mapping per month; partition overwrite = idempotent.
-- [ ] Unit tests: conform, DST edge cases (last Sunday of March/October), dedupe, idempotent write. Integration test on a small parquet sample in MinIO.
-- [ ] Backfill the full training window (e.g. 9–12 months).
+- [x] Add Airflow 3 to `docker-compose.yml` (profile `airflow`, LocalExecutor, Postgres metadata DB, custom image with `dbdelay` installed).
+- [x] `dbdelay/data/hf_backfill.py`: download month → bronze (MinIO) → filter stations → conform to silver schema (tz localize Europe/Berlin → UTC, `event_id`, `is_late`) → dedupe.
+- [x] `dbdelay/data/quality.py`: per-partition stats (rows in/out, drop reasons, null rates, late rate) + quarantine.
+- [x] DAG `backfill_history`: params `months: list[str]`; dynamic task mapping per month; partition overwrite = idempotent.
+- [x] Unit tests: conform, DST edge cases (last Sunday of March/October), dedupe, idempotent write. Integration test on a small parquet sample in MinIO.
+- [x] Backfill the full training window (e.g. 9–12 months). — 9 months 2025-12 → 2026-08, 3,724,008 silver rows.
 
 Exit criteria
 - Running the DAG twice for the same month produces identical output (row counts & hash).
