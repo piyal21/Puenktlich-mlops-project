@@ -1,4 +1,4 @@
-"""Append missing Airflow secrets to `.env` without printing their values.
+"""Fill missing or placeholder Airflow secrets in `.env` without printing their values.
 
 Usage: uv run python scripts/ensure_airflow_env.py [path-to-.env]
 """
@@ -17,17 +17,37 @@ GENERATORS: dict[str, Callable[[], str]] = {
 }
 
 
+PLACEHOLDER_PREFIX = "change-me"
+
+
+def _needs_value(value: str) -> bool:
+    value = value.strip()
+    return not value or value.startswith(PLACEHOLDER_PREFIX)
+
+
 def ensure_keys(env_file: Path) -> list[str]:
-    """Add each missing key with a fresh random value; return the names added."""
+    """Give each missing, empty or placeholder key a fresh random value; return the names set.
+
+    Placeholders (copied from `.env.example`) are replaced in place; missing keys are appended.
+    """
     text = env_file.read_text(encoding="utf-8") if env_file.exists() else ""
-    present = {line.split("=", 1)[0].strip() for line in text.splitlines() if "=" in line}
-    added = [key for key in GENERATORS if key not in present]
-    if added:
-        lines = [f"{key}={GENERATORS[key]()}" for key in added]
-        prefix = "" if not text or text.endswith("\n") else "\n"
-        with env_file.open("a", encoding="utf-8") as handle:
-            handle.write(prefix + "\n".join(lines) + "\n")
-    return added
+    lines = text.splitlines()
+    present: set[str] = set()
+    replaced: set[str] = set()
+    for index, line in enumerate(lines):
+        key, sep, value = line.partition("=")
+        key = key.strip()
+        if not sep or key not in GENERATORS:
+            continue
+        present.add(key)
+        if _needs_value(value):
+            lines[index] = f"{key}={GENERATORS[key]()}"
+            replaced.add(key)
+    lines += [f"{key}={GENERATORS[key]()}" for key in GENERATORS if key not in present]
+    changed = [key for key in GENERATORS if key in replaced or key not in present]
+    if changed:
+        env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return changed
 
 
 if __name__ == "__main__":

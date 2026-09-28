@@ -121,3 +121,18 @@ def test_hf_download_errors_become_external_service_errors(
     monkeypatch.setattr(hf_backfill, "HfApi", BrokenApi)
     with pytest.raises(ExternalServiceError):
         hf_backfill.hf_download("monthly_processed_data/data-2026-03.parquet", tmp_path)
+
+
+def test_ingest_streams_the_file_instead_of_holding_it_in_memory(
+    store: ObjectStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_put = store.put_bytes
+
+    def put_small_only(key: str, data: bytes, content_type: str = "") -> None:
+        assert not key.endswith("data.parquet"), "bronze data must be uploaded from disk"
+        real_put(key, data, content_type)
+
+    monkeypatch.setattr(store, "put_bytes", put_small_only)
+    ingest_month("2026-03", store, download=FakeDownloader(), now=lambda: NOW)
+
+    assert store.get_bytes(bronze_prefix("2026-03") + "data.parquet") == b"PAR1-fake"

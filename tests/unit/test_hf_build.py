@@ -132,3 +132,19 @@ def test_neighbour_without_matching_rows_is_fine(store: ObjectStore, tmp_path: P
     report = build_silver_month(store, "2026-03", STATIONS, tmp_path)
     assert report.edge_complete == {"prev": True, "next": False}
     assert report.rows_out == 1
+
+
+def test_build_streams_bronze_instead_of_holding_it_in_memory(
+    store: ObjectStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _put_month(store, "2026-03", *_march_rows())
+    real_get = store.get_bytes
+
+    def get_small_only(key: str) -> bytes:
+        assert not key.endswith("data.parquet"), "bronze data must be downloaded to disk"
+        return real_get(key)
+
+    monkeypatch.setattr(store, "get_bytes", get_small_only)
+    report = build_silver_month(store, "2026-03", STATIONS, tmp_path)
+
+    assert report.rows_read == 2

@@ -79,6 +79,15 @@ def hf_download(path_in_repo: str, dest: Path) -> tuple[Path, str]:
     return Path(local), revision
 
 
+def sha256_file(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
+    """SHA-256 of a file, read in chunks (bronze months are ~650 MB)."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(chunk_size):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def load_manifest(store: ObjectStore, month: str, root: str = "") -> BronzeManifest:
     """Read a bronze manifest. Raises ``NotFoundError`` if the month is not ingested."""
     raw = store.get_bytes(bronze_prefix(month, root) + MANIFEST_FILE)
@@ -100,17 +109,16 @@ def ingest_month(  # noqa: PLR0913 - keyword-only seams for tests (download, now
         return load_manifest(store, month, root)
     with tempfile.TemporaryDirectory() as tmp:
         local, revision = download(hf_path(month), Path(tmp))
-        data = local.read_bytes()
-    manifest = BronzeManifest(
-        month=month,
-        hf_repo=HF_REPO,
-        hf_path=hf_path(month),
-        hf_revision=revision,
-        sha256=hashlib.sha256(data).hexdigest(),
-        size_bytes=len(data),
-        downloaded_at=now(),
-    )
-    store.put_bytes(prefix + BRONZE_FILE, data)
+        manifest = BronzeManifest(
+            month=month,
+            hf_repo=HF_REPO,
+            hf_path=hf_path(month),
+            hf_revision=revision,
+            sha256=sha256_file(local),
+            size_bytes=local.stat().st_size,
+            downloaded_at=now(),
+        )
+        store.upload_file(prefix + BRONZE_FILE, local)
     store.put_bytes(
         prefix + MANIFEST_FILE, manifest.model_dump_json(indent=2).encode(), "application/json"
     )
@@ -188,12 +196,10 @@ def read_departures(
             edge_complete[label] = False
             continue
         manifest = load_manifest(store, source_month, root)
-        data = store.get_bytes(prefix + BRONZE_FILE)
-        if hashlib.sha256(data).hexdigest() != manifest.sha256:
-            raise DataValidationError(f"bronze {source_month} checksum mismatch")
         path = workdir / f"hf-{source_month}.parquet"
-        path.write_bytes(data)
-        del data
+        store.download_file(prefix + BRONZE_FILE, path)
+        if sha256_file(path) != manifest.sha256:
+            raise DataValidationError(f"bronze {source_month} checksum mismatch")
         part = _query_file(path, evas, lo, hi)
         part["ingested_at"] = pd.Timestamp(manifest.downloaded_at).tz_convert("UTC")
         part["_file_month"] = source_month

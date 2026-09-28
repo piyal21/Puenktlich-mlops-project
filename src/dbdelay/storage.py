@@ -4,9 +4,11 @@ Setting ``STORAGE_ENDPOINT_URL`` switches boto3 to an S3-compatible endpoint.
 """
 
 from collections.abc import Iterator
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import boto3
+from boto3.exceptions import S3UploadFailedError
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
@@ -109,6 +111,33 @@ class ObjectStore:
             raise ExternalServiceError(f"get s3://{self.bucket}/{key} failed") from exc
         except BotoCoreError as exc:
             raise ExternalServiceError(f"get s3://{self.bucket}/{key} failed") from exc
+
+    def upload_file(self, key: str, path: Path) -> None:
+        """Stream a local file to one object (multipart for large files; no full read into memory).
+
+        Raises:
+            ExternalServiceError: if the upload fails.
+        """
+        try:
+            self._client.upload_file(str(path), self.bucket, key)
+        except (ClientError, BotoCoreError, S3UploadFailedError) as exc:
+            raise ExternalServiceError(f"upload s3://{self.bucket}/{key} failed") from exc
+
+    def download_file(self, key: str, path: Path) -> None:
+        """Stream one object to a local file (no full read into memory).
+
+        Raises:
+            NotFoundError: if the object does not exist.
+            ExternalServiceError: for any other storage failure.
+        """
+        try:
+            self._client.download_file(self.bucket, key, str(path))
+        except ClientError as exc:
+            if _is_missing(exc):
+                raise NotFoundError(f"s3://{self.bucket}/{key} not found") from exc
+            raise ExternalServiceError(f"download s3://{self.bucket}/{key} failed") from exc
+        except BotoCoreError as exc:
+            raise ExternalServiceError(f"download s3://{self.bucket}/{key} failed") from exc
 
     def exists(self, key: str) -> bool:
         """Return whether an object exists.
