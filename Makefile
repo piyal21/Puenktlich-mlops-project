@@ -4,7 +4,7 @@
 .DEFAULT_GOAL := help
 COMPOSE := docker compose
 
-.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill
+.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline
 
 help: ## Show available targets
 	@uv run python -c "import re; [print(f'{m[0]:<18} {m[1]}') for m in re.findall(r'^([a-z-]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -60,3 +60,6 @@ test-dags: ## Parse the DAGs inside the Airflow image
 backfill: ## Unpause and trigger backfill_history with its default 9 months
 	$(COMPOSE) --profile airflow exec airflow-scheduler airflow dags unpause backfill_history
 	$(COMPOSE) --profile airflow exec airflow-scheduler airflow dags trigger backfill_history
+
+baseline: ## Build the gold training snapshot and evaluate the late-rate baseline (Phase 3)
+	uv run python -m dbdelay.training.run_baseline
