@@ -92,15 +92,15 @@ You learn: Airflow 3 TaskFlow, dynamic task mapping, medallion architecture, ide
 **Goal:** one feature module used everywhere, a time-based split, and a baseline to beat.
 
 Tasks
-- [ ] `dbdelay/features/calendar.py` (local hour, weekday, holidays by state), `spec.py` (FeatureSpec: names, dtypes, category levels, `OTHER` mapping), `build.py`.
-- [ ] Leakage guard: a test that fails if forbidden columns (`changed_departure_utc`, `delay_min`, `is_cancelled`, `is_late`) reach the feature matrix.
-- [ ] `dbdelay/training/split.py`: train/valid/test by time (config-driven) + snapshot writer (`gold/training_sets/<snapshot_id>/` + `snapshot.json` with content hash).
-- [ ] `dbdelay/training/baseline.py`: late-rate lookup by (eva, train_type, hour_local, weekday) with backoff to coarser groups.
-- [ ] `dbdelay/training/evaluate.py`: Brier, ROC-AUC, PR-AUC, log loss, ECE, per-slice metrics, calibration plot.
+- [x] `dbdelay/features/calendar.py` (local hour, weekday, holidays by state), `spec.py` (FeatureSpec: names, dtypes, category levels, `OTHER` mapping), `build.py`.
+- [x] Leakage guard: a test that fails if forbidden columns (`changed_departure_utc`, `delay_min`, `is_cancelled`, `is_late`) reach the feature matrix.
+- [x] `dbdelay/training/split.py`: train/valid/test by time (config-driven) + snapshot writer (`gold/training_sets/<snapshot_id>/` + `snapshot.json` with content hash).
+- [x] `dbdelay/training/baseline.py`: late-rate lookup by (eva, train_type, hour_local, weekday) with backoff to coarser groups.
+- [x] `dbdelay/training/evaluate.py`: Brier, ROC-AUC, PR-AUC, log loss, ECE, per-slice metrics, calibration plot.
 
 Exit criteria
-- Baseline metrics on the test split recorded (in notebook or MLflow).
-- Feature builder is deterministic and fully unit-tested.
+- ✅ Baseline metrics on the test split recorded (in notebook or MLflow). — snapshot `2026-08-31_38b45c7a`, test Brier 0.1520 / ROC-AUC 0.7714 (`notebooks/02_baseline.ipynb`).
+- ✅ Feature builder is deterministic and fully unit-tested.
 
 You learn: feature engineering for tabular ML, time-series-aware validation, baselines, calibration metrics.
 

@@ -86,7 +86,8 @@ Doc priority on conflict: `rules.md` > `architecture.md` > `prd.md` > `phases.md
 - `src/dbdelay/`: `config.py` (Settings, `get_settings()` cached, empty env = unset), `errors.py`, `logging.py` (Powertools), `storage.py` (`make_s3_client`, `ObjectStore`: put/get/upload_file/download_file/exists/iter_keys; no delete by design). Phase 2: `data/months.py`, `data/stations.py`, `data/silver.py`, `data/quality.py`, `data/hf_backfill.py`.
 
 ## Status
-- **Current phase: ✅ Phase 2 — Historical ETL (Airflow) done** on branch `phase-2/hf-backfill`, pushed, **waiting for owner merge** (`git merge --no-ff phase-2/hf-backfill -F .git/MERGE_SUMMARY.txt`). Spec `docs/superpowers/specs/2026-09-26-phase-2-hf-backfill-design.md`, plan `docs/superpowers/plans/2026-09-27-phase-2-hf-backfill.md`.
+- **Current phase: ✅ Phase 3 — Features & baseline done** on branch `phase-3/features-baseline`, pushed, **waiting for owner merge** (`git merge --no-ff phase-3/features-baseline -F .git/MERGE_SUMMARY.txt`). Spec `docs/superpowers/specs/2026-09-30-phase-3-features-baseline-design.md`, plan `docs/superpowers/plans/2026-09-30-phase-3-features-baseline.md`.
+- Phase 2 merged by owner (`b8fac56`). Phase 3: `make baseline` → gold snapshot `2026-08-31_38b45c7a` (train 3,197,166 / valid 178,256 / test 176,628 rows; excluded 170,228 cancelled + 494 gap-hour + 1,236 gap-station-day rows); baseline test Brier 0.1520, ROC-AUC 0.7714, PR-AUC 0.5272, ECE 0.0124. New deps: `holidays` (main), `scikit-learn` (extra `training` + dev). Features only via `dbdelay.features.build.build_features(df, spec)`.
 - Phase 2 data in MinIO: bronze 9 months (2025-12 → 2026-08, ~650 MB each), silver 274 day files, 3,724,008 rows; quarantine + quality JSON per month (`silver/_quarantine/…`, `silver/_quality/…`).
 - Airflow: `make airflow-env` (fills missing/`change-me` secrets) → `make airflow-up` → UI :8080 → `make backfill`. Image installs under Airflow constraints-3.3.2 minus `pandas==` (project pins pandas<3); `huggingface-hub<2`. New DAG files need `docker compose restart airflow-dag-processor` (or wait for bundle refresh).
 - ⚠️ **PC sleep kills running tasks:** containers freeze, task JWT (10 min) expires → 403 on heartbeat → task failed. Keep the PC awake during backfills; recover with a clear of failed TIs or a re-trigger (ingest skips existing months, silver is idempotent).
@@ -96,13 +97,13 @@ Doc priority on conflict: `rules.md` > `architecture.md` > `prd.md` > `phases.md
 - Phase 1 merged to `main` by owner via CLI (`git merge --no-ff`, merge commit `867636a`, pushed; no PR). Branches `phase-0/foundations`, `phase-1/data-discovery` kept (local + remote).
 - Deferred by owner: AWS account (Phase 6).
 - DB API: ✅ working (HTTP 200; all 30 station EVAs return live plans, 2026-09-25). Keys in `.env`; scripts load them via `get_settings()` — never `source .env` in bash (it mis-parses and echoes values).
-- ⚠️ **Open:** owner to rotate DB API keys (two likely key values were echoed in the 2026-09-25 session output). Update `.env` after rotating.
+- ✅ DB API keys rotated by owner (2026-09-29); new keys verified (HTTP 200, values never printed).
 - Phase 1 decisions **confirmed by owner 2026-09-26** (ADR 0001 → Accepted): label, leakage policy, silver contract (architecture §3.3), station list incl. Berlin `hf_aliases`, stdlib urllib in the dev fetch script.
 - **Phase 7 must-do (risk #1):** "no change reported ⇒ on time" hides late trains if live ingestion misses fchg windows → record per stop whether it was seen in fchg, flag ingestion-gap days in monitoring, reconcile live vs HF on overlapping days.
 - Phase 7/9: alert when a station's live board is empty (EVA drift like Berlin) → fix via `hf_aliases`.
 - Phase 1 data: HF months 2025-10, 2026-03, 2026-08 in `data/raw/hf/` (git-ignored, ~1.3 GB; download command at top of `notebooks/01_eda.ipynb`). Key facts in the notebook summary.
-- Carry into Phase 3: risk thresholds (0.20 / 0.45) not yet in a config file; data gaps flagged in the quality reports (low-volume hours e.g. 2026-03-16 18–21h, 2026-04-08 06–11h; Potsdam Hbf low volume 2026-03-23…31) — decide whether to mask them in training; train-type-mix shift flag not built.
-- **Do NOT start Phase 3 until the owner explicitly says so.**
+- Carry into Phase 4: risk thresholds (0.20 / 0.45) not yet in a config file; snapshot id hashes parquet bytes incl. library versions (new id after pyarrow/pandas upgrade or inside the Airflow image); `month` feature unseen for Sep–Nov; tune `min_count` thresholds; Phase 3 deferred review minors are listed in CHANGELOG.md.
+- **Do NOT start Phase 4 until the owner explicitly says so.**
 
 ## Session log
 - **2026-09-24 (1)** — Read all docs; set up CLAUDE.md, reviewer subagent, docs/. Decided: Windows FS + named volumes.
@@ -113,3 +114,4 @@ Doc priority on conflict: `rules.md` > `architecture.md` > `prd.md` > `phases.md
 - **2026-09-26** — Owner go for Phase 2; branch `phase-2/hf-backfill`. Added `Phases/` folder rule + Phase 0/1 docs; ADR 0001 Accepted. Brainstormed → spec (split Airflow services, DuckDB filter + pandas conform) approved.
 - **2026-09-27** — Plan written; native execution. Tasks 1–10 built (TDD, 145 unit tests). Image deps conflicted → owner chose Airflow constraints. Real backfill triggered; PC sleep caused 403s.
 - **2026-09-28** — Docker Desktop engine hung (500s) → owner restarted it. Final review (opus): 0 Critical, 2 Important fixed (placeholder Airflow secrets, streaming bronze), 8 Minor deferred. Backfill finished (9 months, 3,724,008 silver rows); second run on the fixed image for determinism. CHANGELOG + `Phases/phase-2-hf-backfill.md` written; branch pushed; merge message in `.git/MERGE_SUMMARY.txt`. Waiting for owner merge and go for Phase 3.
+- **2026-09-29 → 10-03** — Owner merged Phase 2 (`b8fac56`) and rotated DB API keys. Phase 3: brainstorm → spec (owner decisions: deps holidays + scikit-learn, exclude data gaps from all splits) → plan → native execution (12 tasks, TDD). Real run: snapshot `2026-08-31_38b45c7a`, deterministic over 3 runs. Final review (opus): 0 Critical, 2 Important fixed, 7 Minor deferred. Lesson: run `ruff check --fix` + `ruff format` (incl. notebooks) before `git add`, else the pre-commit hook silently aborts the commit. Waiting for owner merge and go for Phase 4.
