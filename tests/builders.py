@@ -1,6 +1,7 @@
 """Synthetic HF-shaped and silver-shaped frames for unit and integration tests."""
 
 import io
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -8,6 +9,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from dbdelay.data.quality import QualityReport, StationQuality
 from dbdelay.data.silver import RAW_COLUMNS, RAW_DTYPES, make_event_id
 
 HF_FILE_COLUMNS = RAW_COLUMNS[:-2]  # without ingested_at, _file_month
@@ -78,3 +80,30 @@ def silver_frame(n: int = 3, day: str = "2026-03-10") -> pd.DataFrame:
 
 def read_parquet_bytes(data: bytes) -> pd.DataFrame:
     return pd.read_parquet(io.BytesIO(data))
+
+
+def quality_report(
+    month: str,
+    *,
+    low_volume_hours: Sequence[str] = (),
+    drop_days: Mapping[str, Sequence[str]] | None = None,
+) -> QualityReport:
+    """A minimal monthly quality report with the given gap flags."""
+    stations = [
+        StationQuality(eva=eva, rows=0, volume_drop_days=list(days))
+        for eva, days in (drop_days or {}).items()
+    ]
+    return QualityReport(
+        month=month,
+        rows_read=0,
+        rows_out=0,
+        drops={},
+        quarantined={},
+        null_rates={},
+        late_rate=None,
+        cancelled_rate=None,
+        stations=stations,
+        low_volume_hours=list(low_volume_hours),
+        edge_complete={"prev": True, "next": True},
+        content_hash="0" * 64,
+    )
