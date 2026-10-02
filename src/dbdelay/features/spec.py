@@ -12,6 +12,7 @@ from dbdelay.errors import DataValidationError
 FEATURE_VERSION = 1
 OTHER = "OTHER"
 _MISSING = "none"
+_INT16_MAX = 32767
 
 REQUIRED_COLUMNS: tuple[str, ...] = (
     "eva",
@@ -80,12 +81,22 @@ class FeatureSpec(BaseModel):
 
 
 def require_columns(df: pd.DataFrame) -> None:
-    """Raise ``DataValidationError`` if an input column is missing or times are naive."""
+    """Raise ``DataValidationError`` for missing columns, naive or missing times, or a
+    ``stop_index`` that is missing or not a whole number in int16 range."""
     missing = [column for column in REQUIRED_COLUMNS if column not in df.columns]
     if missing:
         raise DataValidationError(f"feature input is missing columns: {missing}")
-    if not isinstance(df["planned_departure_utc"].dtype, pd.DatetimeTZDtype):
+    planned = df["planned_departure_utc"]
+    if not isinstance(planned.dtype, pd.DatetimeTZDtype):
         raise DataValidationError("planned_departure_utc must be timezone-aware (UTC)")
+    if planned.isna().any():
+        raise DataValidationError("planned_departure_utc has missing values")
+    stop = pd.to_numeric(df["stop_index"], errors="coerce").astype("float64")
+    valid = stop.notna() & stop.between(0, _INT16_MAX) & (stop % 1 == 0)
+    if not valid.all():
+        raise DataValidationError(
+            f"stop_index must be a whole number in 0..{_INT16_MAX} ({int((~valid).sum())} rows)"
+        )
 
 
 def category_keys(df: pd.DataFrame) -> pd.DataFrame:

@@ -73,3 +73,24 @@ def test_naive_timestamps_are_rejected() -> None:
 def test_empty_train_cannot_be_fitted() -> None:
     with pytest.raises(DataValidationError):
         fit_spec(_train().iloc[0:0], STATIONS, min_count=1)
+
+
+def test_null_stop_index_is_rejected() -> None:
+    frame = _train()
+    frame["stop_index"] = pd.Series([1, None, 2, 3], dtype="Int16")
+    with pytest.raises(DataValidationError, match="stop_index"):
+        require_columns(frame)
+
+
+def test_out_of_range_stop_index_is_rejected() -> None:
+    frame = _train()
+    frame["stop_index"] = [1.0, 40000.0, 2.0, 3.0]
+    with pytest.raises(DataValidationError, match="stop_index"):
+        require_columns(frame)
+
+
+def test_missing_planned_departure_is_rejected() -> None:
+    frame = _train()
+    frame.loc[1, "planned_departure_utc"] = pd.NaT
+    with pytest.raises(DataValidationError, match="planned_departure_utc"):
+        require_columns(frame)

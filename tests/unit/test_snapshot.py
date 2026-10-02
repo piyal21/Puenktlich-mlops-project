@@ -1,9 +1,10 @@
 from datetime import date
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
-from dbdelay.data.silver import quality_key
+from dbdelay.data.silver import quality_key, write_silver_month
 from dbdelay.errors import DataValidationError
 from dbdelay.storage import ObjectStore
 from dbdelay.training.split import (
@@ -12,7 +13,7 @@ from dbdelay.training.split import (
     load_snapshot_split,
     snapshot_prefix,
 )
-from tests.builders import MARCH_CONFIG, put_march_silver, quality_report
+from tests.builders import MARCH_CONFIG, put_march_silver, quality_report, silver_day
 
 
 def test_snapshot_rows_exclusions_and_files(s3_store: ObjectStore, tmp_path: Path) -> None:
@@ -104,3 +105,16 @@ def test_manifest_records_split_config(s3_store: ObjectStore, tmp_path: Path) ->
         "valid_days": 7,
         "exclude_data_gaps": True,
     }
+
+
+def test_latest_silver_day_skips_empty_partitions(s3_store: ObjectStore) -> None:
+    put_march_silver(s3_store)
+    april = pd.concat([silver_day(f"2026-04-0{d}") for d in range(1, 6)], ignore_index=True)
+    write_silver_month(april, s3_store, "2026-04")  # writes all 30 April days, 25 of them empty
+    assert latest_silver_day(s3_store) == date(2026, 4, 5)
+
+
+def test_only_empty_partitions_is_an_error(s3_store: ObjectStore) -> None:
+    write_silver_month(silver_day("2026-04-01").iloc[0:0], s3_store, "2026-04")
+    with pytest.raises(DataValidationError, match="no silver"):
+        latest_silver_day(s3_store)

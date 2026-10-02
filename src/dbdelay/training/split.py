@@ -1,6 +1,7 @@
 """Time-based train/valid/test snapshot of labelled silver rows (architecture §3.4, §5.3)."""
 
 import hashlib
+import io
 from calendar import monthrange
 from collections.abc import Sequence
 from datetime import date, timedelta
@@ -10,6 +11,7 @@ from typing import Any
 import duckdb
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict
 
 from dbdelay.data.quality import QualityReport
@@ -145,19 +147,27 @@ def snapshot_prefix(snapshot_id: str, root: str = "") -> str:
 
 
 def latest_silver_day(store: ObjectStore, root: str = "") -> date:
-    """Newest UTC day with a silver partition.
+    """Newest UTC day whose silver partition has rows.
+
+    Built months contain an (empty) partition for every day, so the newest key alone
+    would point past the data of a partially collected month.
 
     Raises:
-        DataValidationError: if there is no silver data at all.
+        DataValidationError: if there is no silver row at all.
     """
-    days = [
-        date.fromisoformat(key.split("date=", 1)[1][:10])
-        for key in store.iter_keys(root + SILVER_PREFIX)
-        if "date=" in key
-    ]
-    if not days:
-        raise DataValidationError("no silver days found")
-    return max(days)
+    days = sorted(
+        {
+            date.fromisoformat(key.split("date=", 1)[1][:10])
+            for key in store.iter_keys(root + SILVER_PREFIX)
+            if "date=" in key
+        },
+        reverse=True,
+    )
+    for day in days:
+        footer = pq.read_metadata(io.BytesIO(store.get_bytes(silver_key(day, root))))
+        if footer.num_rows > 0:
+            return day
+    raise DataValidationError("no silver rows found")
 
 
 def _load_reports(store: ObjectStore, months: Sequence[str], root: str) -> list[QualityReport]:
