@@ -3,6 +3,53 @@
 One entry per phase branch (owner rule, from Phase 2 on). Phases 0–1 are described in [`Phases/`](Phases/).
 Only measured numbers; anything not measured is `TBD`.
 
+## Phase 3 — Features & baseline (`phase-3/features-baseline`)
+
+**Built**
+- `dbdelay.features`: `calendar` (Berlin local hour/minute/weekday/weekend/month, national + state holidays), `spec`
+  (`FeatureSpec` fitted on train only; rare/unseen levels → `OTHER`; input checks), `build` (`build_features`, the only
+  feature maker; leakage-guarded).
+- `dbdelay.training`: `config` (`configs/training.yaml`), `split` (window, data-gap exclusion, UTC-date split,
+  deterministic gold snapshot `gold/training_sets/<end>_<hash8>/` + `snapshot.json`, reuse if present), `baseline`
+  (late-rate lookup with 4 back-off levels + global), `evaluate` (Brier, ROC-AUC, PR-AUC, log loss, ECE, calibration
+  bins, slices by train type / station / hour band), `run_baseline` (`make baseline`).
+- `notebooks/02_baseline.ipynb` (metrics table + calibration plot), `scripts/make_baseline_notebook.py`.
+
+**Key decisions**
+- Owner: new deps `holidays` (main) and `scikit-learn` (extra `training` + dev); flagged data gaps excluded from all splits.
+- Snapshot = cleaned silver rows (no features); spec and baseline fitted on train only; split by UTC date
+  (test = last 14 days, valid = 14 before); cancelled rows excluded (no label, ADR 0001).
+- `line_key` = `"<train_type>:<line_number>"`, missing line → `"<train_type>:none"`; feature spec stores station states.
+- Starting thresholds (not tuned): `OTHER` < 200 train rows, baseline group ≥ 50 rows, slice metrics from 500 rows.
+
+**Tested**
+- `make check`: ruff + format + mypy `--strict` clean, **216 unit tests passed, 99 % coverage**.
+- `make test-integration`: **5 passed** (MinIO: snapshot twice → same id and bytes; baseline end to end).
+- `make test-dags`: **DAG check passed** after rebuilding the Airflow image with `holidays` 0.105.
+- Real run `make baseline`: exit 0 in **96 s**; snapshot **`2026-08-31_38b45c7a`** (2025-12-01 … 2026-08-31, 274 silver days):
+  train **3,197,166** rows (late 24.3 %), valid **178,256** (27.2 %), test **176,628** (24.7 %); excluded **170,228**
+  cancelled, **494** gap-hour and **1,236** gap-station-day rows (sum = all 3,724,008 silver rows).
+- Baseline — valid: Brier **0.1588**, ROC-AUC **0.7783**, PR-AUC **0.5739**, log loss **0.4901**, ECE **0.0280**;
+  test: Brier **0.1520**, ROC-AUC **0.7714**, PR-AUC **0.5272**, log loss **0.4704**, ECE **0.0124**.
+- Determinism: second run → identical snapshot id and sha256 of all 7 gold files; the reviewer's independent rebuild and
+  a third run after the fix pass → same id.
+- Final whole-branch review (independent reviewer): 0 Critical, 2 Important (fixed with tests first), 7 Minor (deferred).
+
+**Known gaps / open items**
+- Snapshot id hashes parquet bytes incl. pyarrow/pandas version metadata → a library upgrade or another image gives a new
+  id for the same silver (duplicate, not wrong data).
+- Test metrics are on gap-cleaned rows; live serving will not have that cleanup. `month` values Sep–Nov never seen in train.
+- Holidays: library's Bavaria calendar lacks Assumption Day (15 Aug); only 2026-08-15 (Saturday) affected in the window.
+- Deferred review minors: snapshot reuse trusts `snapshot.json` alone (a deleted split parquet fails later with a raw
+  error); empty-split test does not assert nothing was uploaded; `FeatureSpec.from_json` does not check version/feature
+  list (spec JSON has no dtypes/hash); gap-hour parsing relies on flagged hours being 06–21; notebook picks the latest
+  snapshot by key name, not time.
+- Thresholds untuned; risk thresholds (0.20 / 0.45) still not in a config file.
+
+**Docs touched**
+- `docs/phases.md` (Phase 3 ticked), `docs/architecture.md` (§3.4 gold contents, §4 `line_key` rule), `README.md`
+  (`make baseline`), `CLAUDE.md`, `Phases/phase-3-features-baseline.md`, `Phases/README.md`, this file.
+
 ## Phase 2 — Historical ETL with Airflow (`phase-2/hf-backfill`)
 
 **Built**

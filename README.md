@@ -384,6 +384,8 @@ open http://localhost:5173    # the app
 Useful commands: `make test`, `make test-integration`, `make lint`, `make typecheck`, `make rollback`, `make down`.
 History backfill (Phase 2): `make airflow-env` (once) → `make airflow-up` → `make backfill`; `make test-dags` checks the DAGs.
 
+Training snapshot + baseline (Phase 3): `make baseline` builds `gold/training_sets/<id>/` from the backfilled silver and writes the baseline metrics next to it.
+
 ---
 
 ## 10. Deploy your own

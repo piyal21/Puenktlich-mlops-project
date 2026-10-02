@@ -10,6 +10,7 @@ dependencies = [
     "aws-lambda-powertools>=3.35,<4",
     "boto3>=1.43",
     "duckdb>=1.5.5",
+    "holidays>=0.105",
     "pandas>=2.2,<3",
     "pandera>=0.33.1",
     "pyarrow>=25.0.1",
@@ -21,6 +22,10 @@ dependencies = [
 # Installed in the Airflow image (and in the dev venv via the dev group); not in Lambda images.
 # <2: huggingface-hub 2.x conflicts with packages preinstalled in the Airflow image.
 pipelines = ["huggingface-hub>=0.30,<2"]
+# Training-only (Phase 3+): metrics/calibration; kept out of the Lambda image.
+training = [
+    "scikit-learn>=1.9.1",
+]
 
 [dependency-groups]
 dev = [
@@ -35,6 +40,7 @@ dev = [
     "pytest>=9.1",
     "pytest-cov>=7.1",
     "ruff>=0.16",
+    "scikit-learn>=1.9.1",
     "types-pyyaml>=6.0.12.20260906",
 ]
 
@@ -81,6 +87,11 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 # pyarrow ships no type information (stubs would be a new dependency)
 module = ["pyarrow", "pyarrow.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# scikit-learn ships no type information (stubs would be a new dependency)
+module = ["sklearn", "sklearn.*"]
 ignore_missing_imports = true
 
 # ---------- pytest ----------

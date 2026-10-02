@@ -192,7 +192,9 @@ Rules:
 
 ### 3.4 Gold — training snapshot
 
-`gold/training_sets/<snapshot_id>/{train,valid,test}.parquet` + `snapshot.json` (window dates, row counts, late rate, silver partitions used, content hash).
+`gold/training_sets/<snapshot_id>/{train,valid,test}.parquet` + `snapshot.json` (window dates, row counts, late rate, silver partitions used, rows excluded — cancelled / data-gap hours / data-gap station-days — content hash).
+Rows are labelled silver rows only (cancelled rows have no label); flagged data gaps from the monthly quality reports are excluded when `exclude_data_gaps: true` (`configs/training.yaml`).
+Phase 3 writes the baseline next to it: `baseline/{feature_spec.json, baseline.json, metrics.json}` (`make baseline`).
 `snapshot_id = <end-date>_<first 8 chars of content hash>`. Logged to MLflow with `mlflow.log_input`.
 
 ---
@@ -208,7 +210,7 @@ Used by **training, API and monitor** — never re-implemented elsewhere (preven
 |---|---|---|
 | `eva` | categorical | Station |
 | `train_type` | categorical | ICE/IC/EC/RE/RB/S/other |
-| `line_key` | categorical | `train_type + line_number`; levels with < `min_count` rows → `OTHER` |
+| `line_key` | categorical | `"<train_type>:<line_number>"` (missing line → `"<train_type>:none"`); levels with < `min_count` rows → `OTHER` |
 | `destination_key` | categorical | `final_destination`, rare levels → `OTHER` |
 | `stop_index` | int | Delay accumulates along a ride |
 | `hour_local` | int | Europe/Berlin hour of planned departure |

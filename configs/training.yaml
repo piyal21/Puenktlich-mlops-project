@@ -1,0 +1,13 @@
+# Phase 3 training settings (docs/superpowers/specs/2026-09-30-phase-3-features-baseline-design.md §4).
+window_months: 9          # architecture §5.3
+end_date: null            # null = latest silver day present; recorded in snapshot.json
+test_days: 14
+valid_days: 14
+exclude_data_gaps: true   # drop rows in flagged low-volume hours / station-days (owner decision)
+features:
+  min_count: 200          # category levels with fewer train rows → OTHER (initial default, not tuned)
+baseline:
+  min_count: 50           # a lookup group needs this many train rows, else back off (initial default)
+evaluation:
+  ece_bins: 10
+  slice_min_rows: 500     # smaller slices report null metrics

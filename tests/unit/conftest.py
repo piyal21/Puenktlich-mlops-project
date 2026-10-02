@@ -4,8 +4,12 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from moto import mock_aws
 
 from dbdelay.config import Settings, get_settings
+from dbdelay.storage import ObjectStore, make_s3_client
+
+TEST_BUCKET = "puenktlich-test"
 
 
 @pytest.fixture(autouse=True)
@@ -22,3 +26,14 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
+
+
+@pytest.fixture
+def s3_store() -> Iterator[ObjectStore]:
+    """An empty moto-backed bucket."""
+    with mock_aws():
+        client = make_s3_client(Settings(_env_file=None))  # type: ignore[call-arg]
+        client.create_bucket(
+            Bucket=TEST_BUCKET, CreateBucketConfiguration={"LocationConstraint": "eu-central-1"}
+        )
+        yield ObjectStore(client, TEST_BUCKET)
