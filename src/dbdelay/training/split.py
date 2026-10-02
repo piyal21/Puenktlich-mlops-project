@@ -1,19 +1,34 @@
 """Time-based train/valid/test snapshot of labelled silver rows (architecture §3.4, §5.3)."""
 
+import hashlib
 from calendar import monthrange
 from collections.abc import Sequence
 from datetime import date, timedelta
+from pathlib import Path
+from typing import Any
 
+import duckdb
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict
 
 from dbdelay.data.quality import QualityReport
-from dbdelay.errors import DataValidationError
+from dbdelay.data.silver import (
+    SILVER_ARROW_SCHEMA,
+    SILVER_COLUMNS,
+    quality_key,
+    silver_key,
+    to_parquet_bytes,
+)
+from dbdelay.errors import DataValidationError, NotFoundError
 from dbdelay.features.calendar import BERLIN
+from dbdelay.storage import ObjectStore
 from dbdelay.training.config import TrainingConfig
 
 SPLITS: tuple[str, ...] = ("train", "valid", "test")
+SILVER_PREFIX = "silver/departures/source=hf/"
+SNAPSHOT_FILE = "snapshot.json"
+_SPLIT_CONFIG_KEYS = ("window_months", "end_date", "test_days", "valid_days", "exclude_data_gaps")
 
 
 class Windows(BaseModel):
@@ -102,3 +117,157 @@ def assign_split(planned_utc: pd.Series, windows: Windows) -> pd.Series:
     test_start = pd.Timestamp(windows.test_start.isoformat(), tz="UTC")
     labels = np.where(day < valid_start, "train", np.where(day < test_start, "valid", "test"))
     return pd.Series(labels, index=planned_utc.index)
+
+
+class SplitInfo(BaseModel):
+    start: date
+    end: date
+    rows: int
+    late_rate: float
+
+
+class SnapshotManifest(BaseModel):
+    """`snapshot.json` — what the snapshot contains and how it was made."""
+
+    snapshot_id: str
+    content_hash: str
+    window_start: date
+    window_end: date
+    splits: dict[str, SplitInfo]
+    excluded: dict[str, int]
+    silver_days: int
+    quality_months: list[str]
+    config: dict[str, Any]
+
+
+def snapshot_prefix(snapshot_id: str, root: str = "") -> str:
+    return f"{root}gold/training_sets/{snapshot_id}/"
+
+
+def latest_silver_day(store: ObjectStore, root: str = "") -> date:
+    """Newest UTC day with a silver partition.
+
+    Raises:
+        DataValidationError: if there is no silver data at all.
+    """
+    days = [
+        date.fromisoformat(key.split("date=", 1)[1][:10])
+        for key in store.iter_keys(root + SILVER_PREFIX)
+        if "date=" in key
+    ]
+    if not days:
+        raise DataValidationError("no silver days found")
+    return max(days)
+
+
+def _load_reports(store: ObjectStore, months: Sequence[str], root: str) -> list[QualityReport]:
+    reports = []
+    for month in months:
+        try:
+            raw = store.get_bytes(quality_key(month, root))
+        except NotFoundError:
+            raise DataValidationError(f"quality report for {month} is missing") from None
+        reports.append(QualityReport.model_validate_json(raw))
+    return reports
+
+
+def _read_labelled_silver(
+    store: ObjectStore, days: Sequence[date], workdir: Path, root: str
+) -> tuple[pd.DataFrame, int]:
+    """Labelled rows of ``days`` (sorted by event_id) and the number of cancelled rows."""
+    files = []
+    for day in days:
+        path = workdir / f"silver-{day:%Y-%m-%d}.parquet"
+        try:
+            store.download_file(silver_key(day, root), path)
+        except NotFoundError:
+            raise DataValidationError(f"silver day {day} is missing") from None
+        files.append(str(path))
+    con = duckdb.connect()
+    try:
+        con.execute("SET TimeZone = 'UTC'")
+        params = {"files": files}
+        counted = con.execute(
+            "SELECT count(*) FROM read_parquet($files) WHERE is_late IS NULL", params
+        ).fetchone()
+        rows = con.execute(
+            "SELECT * FROM read_parquet($files) WHERE is_late IS NOT NULL ORDER BY event_id",
+            params,
+        ).df()
+    finally:
+        con.close()
+    return rows, int(counted[0]) if counted else 0
+
+
+def build_snapshot(
+    store: ObjectStore, cfg: TrainingConfig, workdir: Path, *, root: str = ""
+) -> SnapshotManifest:
+    """Build (or reuse) the gold snapshot for the configured window.
+
+    Raises:
+        DataValidationError: missing silver day or quality report, too-short window,
+            or an empty split.
+    """
+    workdir.mkdir(parents=True, exist_ok=True)
+    end = cfg.end_date or latest_silver_day(store, root)
+    windows = compute_windows(end, cfg)
+    rows, cancelled = _read_labelled_silver(store, windows.days(), workdir, root)
+    excluded = {"cancelled": cancelled, "gap_hours": 0, "gap_station_days": 0}
+    quality_months: list[str] = []
+    if cfg.exclude_data_gaps:
+        quality_months = windows.months()
+        in_hour, in_day = gap_masks(rows, _load_reports(store, quality_months, root))
+        excluded["gap_hours"] = int(in_hour.sum())
+        excluded["gap_station_days"] = int((in_day & ~in_hour).sum())
+        rows = rows[~(in_hour | in_day)].reset_index(drop=True)
+    split = assign_split(rows["planned_departure_utc"], windows).to_numpy()
+
+    digest = hashlib.sha256()
+    infos: dict[str, SplitInfo] = {}
+    paths: dict[str, Path] = {}
+    for name, (lo, hi) in windows.split_ranges().items():
+        part = rows[split == name].reset_index(drop=True)[list(SILVER_COLUMNS)]
+        if part.empty:
+            raise DataValidationError(f"split {name} is empty")
+        data = to_parquet_bytes(part, SILVER_ARROW_SCHEMA)
+        digest.update(data)
+        paths[name] = workdir / f"{name}.parquet"
+        paths[name].write_bytes(data)
+        infos[name] = SplitInfo(
+            start=lo, end=hi, rows=len(part), late_rate=float(part["is_late"].mean())
+        )
+    content_hash = digest.hexdigest()
+    manifest = SnapshotManifest(
+        snapshot_id=f"{end:%Y-%m-%d}_{content_hash[:8]}",
+        content_hash=content_hash,
+        window_start=windows.start,
+        window_end=windows.end,
+        splits=infos,
+        excluded=excluded,
+        silver_days=len(windows.days()),
+        quality_months=quality_months,
+        config={
+            key: value
+            for key, value in cfg.model_dump(mode="json").items()
+            if key in _SPLIT_CONFIG_KEYS
+        }
+        | {"end_date": end.isoformat()},
+    )
+    prefix = snapshot_prefix(manifest.snapshot_id, root)
+    if store.exists(prefix + SNAPSHOT_FILE):
+        return SnapshotManifest.model_validate_json(store.get_bytes(prefix + SNAPSHOT_FILE))
+    for name, path in paths.items():
+        store.upload_file(prefix + f"{name}.parquet", path)
+    store.put_bytes(
+        prefix + SNAPSHOT_FILE, manifest.model_dump_json(indent=2).encode(), "application/json"
+    )
+    return manifest
+
+
+def load_snapshot_split(
+    store: ObjectStore, snapshot_id: str, split: str, workdir: Path, *, root: str = ""
+) -> pd.DataFrame:
+    """Download one split of a snapshot and read it."""
+    path = workdir / f"load-{split}.parquet"
+    store.download_file(snapshot_prefix(snapshot_id, root) + f"{split}.parquet", path)
+    return pd.read_parquet(path)
