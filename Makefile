@@ -4,7 +4,7 @@
 .DEFAULT_GOAL := help
 COMPOSE := docker compose
 
-.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline
+.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline rollback
 
 help: ## Show available targets
 	@uv run python -c "import re; [print(f'{m[0]:<18} {m[1]}') for m in re.findall(r'^([a-z-]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -63,3 +63,6 @@ backfill: ## Unpause and trigger backfill_history with its default 9 months
 
 baseline: ## Build the gold training snapshot and evaluate the late-rate baseline (Phase 3)
 	uv run python -m dbdelay.training.run_baseline
+
+rollback: ## Point the champion back at the previous model version (pointer + MLflow alias)
+	uv run python scripts/rollback.py
