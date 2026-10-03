@@ -86,8 +86,8 @@ Doc priority on conflict: `rules.md` > `architecture.md` > `prd.md` > `phases.md
 - `src/dbdelay/`: `config.py` (Settings, `get_settings()` cached, empty env = unset), `errors.py`, `logging.py` (Powertools), `storage.py` (`make_s3_client`, `ObjectStore`: put/get/upload_file/download_file/exists/iter_keys; no delete by design). Phase 2: `data/months.py`, `data/stations.py`, `data/silver.py`, `data/quality.py`, `data/hf_backfill.py`.
 
 ## Status
-- **Current phase: ✅ Phase 3 — Features & baseline done** on branch `phase-3/features-baseline`, pushed, **waiting for owner merge** (`git merge --no-ff phase-3/features-baseline -F .git/MERGE_SUMMARY.txt`). Spec `docs/superpowers/specs/2026-09-30-phase-3-features-baseline-design.md`, plan `docs/superpowers/plans/2026-09-30-phase-3-features-baseline.md`.
-- Phase 2 merged by owner (`b8fac56`). Phase 3: `make baseline` → gold snapshot `2026-08-31_38b45c7a` (train 3,197,166 / valid 178,256 / test 176,628 rows; excluded 170,228 cancelled + 494 gap-hour + 1,236 gap-station-day rows); baseline test Brier 0.1520, ROC-AUC 0.7714, PR-AUC 0.5272, ECE 0.0124. New deps: `holidays` (main), `scikit-learn` (extra `training` + dev). Features only via `dbdelay.features.build.build_features(df, spec)`.
+- **Current phase: 🚧 Phase 4 — Training, tracking, registry, gate** on branch `phase-4/training` (owner go 2026-10-03). Spec `docs/superpowers/specs/2026-10-04-phase-4-training-design.md` (owner decisions: deps lightgbm + mlflow-skinny; pointer = MinIO `models/_pointer.json`; `make train` + DAG; artifact smoke test; MLflow run = step hand-off; gate tie → reject).
+- Phase 3 merged by owner (`584f263`, pushed). Phase 2 merged (`b8fac56`). Phase 3: `make baseline` → gold snapshot `2026-08-31_38b45c7a` (train 3,197,166 / valid 178,256 / test 176,628 rows; excluded 170,228 cancelled + 494 gap-hour + 1,236 gap-station-day rows); baseline test Brier 0.1520, ROC-AUC 0.7714, PR-AUC 0.5272, ECE 0.0124. New deps: `holidays` (main), `scikit-learn` (extra `training` + dev). Features only via `dbdelay.features.build.build_features(df, spec)`.
 - Phase 2 data in MinIO: bronze 9 months (2025-12 → 2026-08, ~650 MB each), silver 274 day files, 3,724,008 rows; quarantine + quality JSON per month (`silver/_quarantine/…`, `silver/_quality/…`).
 - Airflow: `make airflow-env` (fills missing/`change-me` secrets) → `make airflow-up` → UI :8080 → `make backfill`. Image installs under Airflow constraints-3.3.2 minus `pandas==` (project pins pandas<3); `huggingface-hub<2`. New DAG files need `docker compose restart airflow-dag-processor` (or wait for bundle refresh).
 - ⚠️ **PC sleep kills running tasks:** containers freeze, task JWT (10 min) expires → 403 on heartbeat → task failed. Keep the PC awake during backfills; recover with a clear of failed TIs or a re-trigger (ingest skips existing months, silver is idempotent).
@@ -103,7 +103,7 @@ Doc priority on conflict: `rules.md` > `architecture.md` > `prd.md` > `phases.md
 - Phase 7/9: alert when a station's live board is empty (EVA drift like Berlin) → fix via `hf_aliases`.
 - Phase 1 data: HF months 2025-10, 2026-03, 2026-08 in `data/raw/hf/` (git-ignored, ~1.3 GB; download command at top of `notebooks/01_eda.ipynb`). Key facts in the notebook summary.
 - Carry into Phase 4: risk thresholds (0.20 / 0.45) not yet in a config file; snapshot id hashes parquet bytes incl. library versions (new id after pyarrow/pandas upgrade or inside the Airflow image); `month` feature unseen for Sep–Nov; tune `min_count` thresholds; Phase 3 deferred review minors are listed in CHANGELOG.md.
-- **Do NOT start Phase 4 until the owner explicitly says so.**
+- **Do NOT start Phase 5 until the owner explicitly says so.**
 
 ## Session log
 - **2026-09-24 (1)** — Read all docs; set up CLAUDE.md, reviewer subagent, docs/. Decided: Windows FS + named volumes.
