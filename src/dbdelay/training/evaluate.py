@@ -1,11 +1,12 @@
 """Probability metrics for the late label: overall, calibration bins and slices."""
 
+from datetime import date, datetime
 from typing import Any
 
 import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike, NDArray
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from sklearn.metrics import average_precision_score, brier_score_loss, log_loss, roc_auc_score
 
 EPS = 1e-6
@@ -50,6 +51,29 @@ class EvaluationReport(BaseModel):
     spec_hash: str
     config: dict[str, Any]
     splits: dict[str, SplitReport]
+
+
+class TrainingReport(BaseModel):
+    """`metrics.json` in a model bundle: challenger, baseline and champion on the same test rows."""
+
+    snapshot_id: str
+    spec_hash: str
+    git_sha: str
+    trained_at: datetime
+    train_start: date
+    train_end: date
+    test_rows: int
+    challenger_valid: SplitReport
+    challenger_test: SplitReport
+    baseline_test: SplitReport
+    champion_version: str | None = None
+    champion_test: SplitReport | None = None
+
+    @model_validator(mode="after")
+    def _champion_pair(self) -> "TrainingReport":
+        if (self.champion_version is None) != (self.champion_test is None):
+            raise ValueError("champion_version and champion_test come together")
+        return self
 
 
 def calibration_bins(y_true: ArrayLike, y_prob: ArrayLike, bins: int) -> list[CalibrationBin]:
