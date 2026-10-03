@@ -1,4 +1,5 @@
-# Phase 3 training settings (docs/superpowers/specs/2026-09-30-phase-3-features-baseline-design.md §4).
+# Phase 3–4 training settings (docs/superpowers/specs/2026-09-30-phase-3-features-baseline-design.md §4,
+# 2026-10-04-phase-4-training-design.md §4).
 window_months: 9          # architecture §5.3
 end_date: null            # null = latest silver day present; recorded in snapshot.json
 test_days: 14
@@ -11,3 +12,31 @@ baseline:
 evaluation:
   ece_bins: 10
   slice_min_rows: 500     # smaller slices report null metrics
+seed: 42
+lightgbm:                     # Phase 4 (spec 2026-10-04 §5)
+  num_threads: 8              # fixed: deterministic=true needs a fixed thread count
+  num_boost_round: 2000
+  early_stopping_rounds: 50
+  params:                     # fixed for every grid point
+    objective: binary
+    feature_fraction: 0.9
+    bagging_fraction: 0.8
+    bagging_freq: 1
+  grid:                       # 2 x 2 x 2 = 8 combos, selected by valid binary_logloss
+    num_leaves: [31, 127]
+    learning_rate: [0.05, 0.1]
+    min_data_in_leaf: [100, 500]
+risk_thresholds:              # prd §5: Low < 0.20 <= Medium < 0.45 <= High
+  medium: 0.20
+  high: 0.45
+gate:                         # architecture §5.4; challenger Brier must be strictly below champion's
+  min_brier_improvement_vs_baseline: 0.05   # relative
+  max_brier_regression_vs_champion: 0.00
+  max_auc_drop_vs_champion: 0.005
+  max_slice_auc_drop: 0.02                  # per train_type
+  min_test_rows: 20000
+registry:
+  model_name: puenktlich-delay
+  experiment: puenktlich-delay
+release:
+  reference_sample_rows: 50000              # rows in reference_sample.parquet (drift reference)

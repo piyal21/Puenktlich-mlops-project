@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
 from dbdelay.config import get_settings
 from dbdelay.data.stations import load_stations
@@ -46,12 +47,7 @@ def test_main_runs_end_to_end(
     get_settings.cache_clear()
     put_march_silver(s3_store)
     config = tmp_path / "training.yaml"
-    config.write_text(
-        "window_months: 1\nend_date: 2026-03-31\ntest_days: 7\nvalid_days: 7\n"
-        "exclude_data_gaps: true\nfeatures: {min_count: 1}\nbaseline: {min_count: 2}\n"
-        "evaluation: {ece_bins: 10, slice_min_rows: 1}\n",
-        encoding="utf-8",
-    )
+    config.write_text(yaml.safe_dump(MARCH_CONFIG.model_dump(mode="json")), encoding="utf-8")
     assert main(["--config", str(config)]) == 0
     keys = list(s3_store.iter_keys("gold/training_sets/"))
     assert sum(key.endswith("baseline/metrics.json") for key in keys) == 1

@@ -17,11 +17,17 @@ from dbdelay.data.silver import (
     quality_key,
     write_silver_month,
 )
+from dbdelay.features.spec import RiskThresholds
 from dbdelay.storage import ObjectStore
 from dbdelay.training.config import (
     BaselineConfig,
     EvaluationConfig,
     FeatureConfig,
+    GateConfig,
+    LightGBMConfig,
+    LightGBMGrid,
+    RegistryConfig,
+    ReleaseConfig,
     TrainingConfig,
 )
 
@@ -164,6 +170,29 @@ def silver_day(  # noqa: PLR0913 - test builder with independent knobs
     return frame
 
 
+PHASE4_SECTIONS: dict[str, Any] = {
+    "seed": 42,
+    "lightgbm": LightGBMConfig(
+        num_threads=2,
+        num_boost_round=50,
+        early_stopping_rounds=10,
+        params={"objective": "binary"},
+        grid=LightGBMGrid(num_leaves=(7,), learning_rate=(0.1,), min_data_in_leaf=(20,)),
+    ),
+    "risk_thresholds": RiskThresholds(medium=0.2, high=0.45),
+    "gate": GateConfig(
+        min_brier_improvement_vs_baseline=0.05,
+        max_brier_regression_vs_champion=0.0,
+        max_auc_drop_vs_champion=0.005,
+        max_slice_auc_drop=0.02,
+        min_test_rows=100,
+    ),
+    "registry": RegistryConfig(
+        model_name="puenktlich-delay-test", experiment="puenktlich-delay-test"
+    ),
+    "release": ReleaseConfig(reference_sample_rows=500),
+}
+
 MARCH_CONFIG = TrainingConfig(
     window_months=1,
     end_date=date(2026, 3, 31),
@@ -173,6 +202,7 @@ MARCH_CONFIG = TrainingConfig(
     features=FeatureConfig(min_count=1),
     baseline=BaselineConfig(min_count=2),
     evaluation=EvaluationConfig(ece_bins=10, slice_min_rows=1),
+    **PHASE4_SECTIONS,
 )
 
 

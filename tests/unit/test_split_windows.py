@@ -11,7 +11,7 @@ from dbdelay.training.config import (
     TrainingConfig,
 )
 from dbdelay.training.split import assign_split, compute_windows, gap_masks
-from tests.builders import quality_report
+from tests.builders import PHASE4_SECTIONS, quality_report
 
 
 def _cfg(window_months: int = 9, test_days: int = 14, valid_days: int = 14) -> TrainingConfig:
@@ -23,6 +23,7 @@ def _cfg(window_months: int = 9, test_days: int = 14, valid_days: int = 14) -> T
         features=FeatureConfig(min_count=1),
         baseline=BaselineConfig(min_count=1),
         evaluation=EvaluationConfig(ece_bins=10, slice_min_rows=1),
+        **PHASE4_SECTIONS,
     )
 
 

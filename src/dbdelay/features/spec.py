@@ -4,7 +4,7 @@ import hashlib
 from collections.abc import Sequence
 
 import pandas as pd
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from dbdelay.data.stations import Station
 from dbdelay.errors import DataValidationError
@@ -49,6 +49,21 @@ FEATURE_COLUMNS: tuple[str, ...] = (
 )
 
 
+class RiskThresholds(BaseModel):
+    """Risk-level cut-offs for ``p_late``: Low < medium <= Medium < high <= High (prd §5)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    medium: float = Field(gt=0, lt=1)
+    high: float = Field(gt=0, lt=1)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> "RiskThresholds":
+        if not self.medium < self.high:
+            raise ValueError("risk_thresholds.medium must be below risk_thresholds.high")
+        return self
+
+
 class FeatureSpec(BaseModel):
     """Everything `build_features` needs besides the rows (saved as `feature_spec.json`)."""
 
@@ -59,13 +74,16 @@ class FeatureSpec(BaseModel):
     min_count: int
     levels: dict[str, tuple[str, ...]]
     station_states: dict[str, str]
+    # Set for model bundles (Phase 4); serving maps p_late to Low/Medium/High with it.
+    risk_thresholds: RiskThresholds | None = None
 
     def to_json(self) -> str:
         return self.model_dump_json(indent=2)
 
     @property
     def spec_hash(self) -> str:
-        return hashlib.sha256(self.model_dump_json().encode()).hexdigest()
+        # exclude_none keeps the hash of Phase 3 specs (no risk thresholds) unchanged.
+        return hashlib.sha256(self.model_dump_json(exclude_none=True).encode()).hexdigest()
 
     @classmethod
     def from_json(cls, text: str | bytes) -> "FeatureSpec":
