@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -206,6 +207,61 @@ MARCH_CONFIG = TrainingConfig(
 )
 
 
+SIGNAL_STATIONS = {"8000105": "Frankfurt (Main) Hbf", "8000261": "München Hbf"}
+
+
+def signal_day(day: str, n: int = 120, *, seed: int = 0) -> pd.DataFrame:
+    """``n`` labelled silver rows on UTC ``day`` with a learnable late signal.
+
+    P(late) = 0.1, +0.6 if ``stop_index`` >= 6, +0.25 if the UTC hour is >= 12. The baseline's
+    groups (station/type/hour/weekday) cannot see ``stop_index``; a 1-split stump sees only it.
+    """
+    rng = np.random.default_rng([seed, int(day.replace("-", ""))])
+    frame = silver_frame(n, day)
+    minutes = np.sort(rng.integers(0, 24 * 60, n))
+    planned = [pd.Timestamp(f"{day} 00:00", tz="UTC") + timedelta(minutes=int(m)) for m in minutes]
+    stop = rng.integers(1, 11, n)
+    hours = np.array([p.hour for p in planned])
+    late = rng.random(n) < 0.1 + np.where(stop >= 6, 0.6, 0.0) + np.where(hours >= 12, 0.25, 0.0)
+    evas = np.array(list(SIGNAL_STATIONS))[rng.integers(0, 2, n)]
+    rides = [f"{1000 + i}-{day[2:4]}{day[5:7]}{day[8:10]}0000" for i in range(n)]
+    frame["eva"] = evas
+    frame["station_name"] = [SIGNAL_STATIONS[e] for e in evas]
+    frame["train_type"] = np.where(rng.random(n) < 0.5, "RE", "ICE")
+    frame["ride_id"] = rides
+    frame["stop_index"] = pd.Series(stop, dtype="int16")
+    frame["event_id"] = [
+        make_event_id(e, r, p) for e, r, p in zip(evas, rides, planned, strict=True)
+    ]
+    frame["planned_departure_utc"] = pd.Series(planned, dtype="datetime64[us, UTC]")
+    frame["changed_departure_utc"] = pd.Series(
+        [p + timedelta(minutes=10 if lt else 0) for p, lt in zip(planned, late, strict=True)],
+        dtype="datetime64[us, UTC]",
+    )
+    frame["delay_min"] = pd.Series(np.where(late, 10, 0), dtype="Int16")
+    frame["is_late"] = pd.Series(late, dtype="boolean")
+    return frame
+
+
+def put_signal_silver(store: ObjectStore, root: str = "", n: int = 120) -> None:
+    """March 2026 of ``signal_day`` rows plus a gap-free quality report."""
+    days = [signal_day(f"2026-03-{d:02d}", n) for d in range(1, 32)]
+    write_silver_month(pd.concat(days, ignore_index=True), store, "2026-03", root)
+    report = quality_report("2026-03")
+    store.put_bytes(quality_key("2026-03", root), report.model_dump_json().encode())
+
+
+def signal_frames(n: int = 120) -> dict[str, pd.DataFrame]:
+    """Signal silver rows of March 2026 split like ``SIGNAL_CONFIG`` (no storage)."""
+    rows = pd.concat([signal_day(f"2026-03-{d:02d}", n) for d in range(1, 32)], ignore_index=True)
+    day = rows["planned_departure_utc"].dt.day
+    return {
+        "train": rows[day <= 17].reset_index(drop=True),
+        "valid": rows[(day >= 18) & (day <= 24)].reset_index(drop=True),
+        "test": rows[day >= 25].reset_index(drop=True),
+    }
+
+
 def put_march_silver(store: ObjectStore, root: str = "", *, with_report: bool = True) -> None:
     """March 2026: 4 rows/day at 07:00 UTC, every 2nd late; 1 cancelled on 03-05;
     gap hour 2026-03-16T08 (local) and station gap day 8000105 / 2026-03-20.
@@ -220,3 +276,18 @@ def put_march_silver(store: ObjectStore, root: str = "", *, with_report: bool = 
             "2026-03", low_volume_hours=["2026-03-16T08"], drop_days={"8000105": ["2026-03-20"]}
         )
         store.put_bytes(quality_key("2026-03", root), report.model_dump_json().encode())
+
+
+SIGNAL_CONFIG = MARCH_CONFIG.model_copy(
+    update={
+        "baseline": BaselineConfig(min_count=5),
+        "evaluation": EvaluationConfig(ece_bins=10, slice_min_rows=50),
+    }
+)
+# One stump: learns stop_index only -> beats the baseline, loses to SIGNAL_CONFIG's model.
+WEAK_LIGHTGBM = SIGNAL_CONFIG.lightgbm.model_copy(
+    update={
+        "num_boost_round": 1,
+        "grid": LightGBMGrid(num_leaves=(2,), learning_rate=(0.1,), min_data_in_leaf=(20,)),
+    }
+)
