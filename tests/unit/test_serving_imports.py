@@ -9,7 +9,11 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 # Later tasks append the serving and API modules.
-SERVING_MODULES = ["dbdelay.registry.artifacts", "dbdelay.training.calibrate"]
+SERVING_MODULES = [
+    "dbdelay.registry.artifacts",
+    "dbdelay.training.calibrate",
+    "dbdelay.serving.model_loader",
+]
 
 _BLOCK_SKLEARN = """
 import importlib, importlib.abc, sys

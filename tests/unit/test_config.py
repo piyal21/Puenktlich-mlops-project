@@ -77,3 +77,18 @@ def test_stations_file_defaults_to_repo_config_and_reads_env(
     assert Settings(_env_file=None).stations_file == Path("configs/stations.yaml")  # type: ignore[call-arg]
     monkeypatch.setenv("STATIONS_FILE", "/opt/airflow/configs/stations.yaml")
     assert Settings(_env_file=None).stations_file == Path("/opt/airflow/configs/stations.yaml")  # type: ignore[call-arg]
+
+
+def test_serving_defaults() -> None:
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.board_key == "live/boards/latest.json.gz"
+    assert settings.board_ttl_s == 60
+    assert settings.board_stale_after_s == 1200
+    assert settings.model_pointer_ttl_s == 300
+    assert settings.cors_origins == []
+
+
+def test_cors_origins_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CORS_ORIGINS", '["http://localhost:5173"]')
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.cors_origins == ["http://localhost:5173"]
