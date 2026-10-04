@@ -14,6 +14,7 @@ SERVING_MODULES = [
     "dbdelay.training.calibrate",
     "dbdelay.serving.model_loader",
     "dbdelay.serving.board",
+    "dbdelay.serving.explain",
 ]
 
 _BLOCK_SKLEARN = """
