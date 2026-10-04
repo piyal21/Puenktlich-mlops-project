@@ -158,6 +158,7 @@ silver/departures/source=hf/date=YYYY-MM-DD/part-0.parquet   # one file per UTC 
 silver/_quarantine/source=hf/month=YYYY-MM/part-0.parquet    # rejected rows + quarantine_reason
 silver/_quality/source=hf/month=YYYY-MM.json                 # quality report (rows, drops, quarantine, rates, flags, content hash)
 gold/training_sets/<snapshot_id>/…                           # Phase 3–4
+models/<version>/…  +  models/_pointer.json                      # Phase 4: bundles + local champion pointer (SSM in Phase 6)
 ```
 
 ### 3.3 Silver contract — `silver/departures` (schema version 1)
@@ -255,6 +256,8 @@ flowchart TD
   K --> L["smoke_test<br/>public API serves new version"]
 ```
 
+Phase 4 (local): `sync_live_silver` is skipped until Phase 7 (no live data yet), and `smoke_test` loads the released bundle through the checksum-verifying loader and reproduces the evaluated test predictions (the API check joins in Phase 5). Steps share one MLflow run: bundle files go to the run's `bundle/` folder, XCom carries only `snapshot_id`, `run_id` and `version`. `make train` runs the same steps in one process.
+
 ### 5.3 Split and evaluation
 - Window: last `training.window_months` (default 9) of silver.
 - `test` = last 14 days, `valid` = 14 days before test, `train` = everything earlier. No shuffling.
@@ -270,6 +273,8 @@ gate:
   min_test_rows: 20000
 ```
 If there is no champion yet (first run), only the baseline and slice checks apply.
+A tie with the champion (equal test Brier) counts as no improvement → rejected (owner decision 2026-10-04).
+Slices whose AUC is missing on either side (too few rows, one class, unseen train type) are skipped and listed in `gate.json`.
 
 ---
 
@@ -296,6 +301,8 @@ If there is no champion yet (first run), only the baseline and slice checks appl
 }
 ```
 Loaders **must** verify every checksum and fail closed on mismatch.
+`files` lists every file in the folder except `manifest.json`; an unlisted file also fails the load.
+Locally (Phase 4) the bundle lives in the models bucket (`puenktlich-local`) and the pointer is `models/_pointer.json` (`{champion_version, previous_version, updated_at}`).
 
 ### Release & rollback
 - SSM `/puenktlich/prod/model/champion_version` = live version. `/…/previous_version` = the one before.

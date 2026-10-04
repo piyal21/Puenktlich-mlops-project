@@ -111,14 +111,14 @@ You learn: feature engineering for tabular ML, time-series-aware validation, bas
 **Goal:** `training_pipeline` DAG trains, tracks, registers and (conditionally) promotes a model — locally.
 
 Tasks
-- [ ] `train.py`: LightGBM with native categoricals, early stopping on valid, small param grid from `configs/training.yaml`, seed from config.
-- [ ] `calibrate.py`: isotonic on valid → export thresholds to `calibrator.json`; apply with `numpy.interp`.
-- [ ] MLflow logging: params, metrics, artifacts (plots, feature importance, model card draft), `mlflow.log_input` for the snapshot, tags (`git_sha`, `snapshot_id`).
-- [ ] Register model `puenktlich-delay`; set alias `@challenger`.
-- [ ] `gate.py`: rules from `configs/training.yaml`; champion re-evaluated on the same test set.
-- [ ] `registry/artifacts.py` + `release.py`: export `models/<version>/` with `manifest.json` + SHA-256; pointer abstraction (`pointer.py`: local file now, SSM later); set `@champion`.
-- [ ] DAG `training_pipeline` (see `architecture.md` §5.2) — gate rejection ends **green**.
-- [ ] `scripts/rollback.py` + `make rollback`.
+- [x] `train.py`: LightGBM with native categoricals, early stopping on valid, small param grid from `configs/training.yaml`, seed from config.
+- [x] `calibrate.py`: isotonic on valid → export thresholds to `calibrator.json`; apply with `numpy.interp`.
+- [x] MLflow logging: params, metrics, artifacts (plots, feature importance, model card draft), `mlflow.log_input` for the snapshot, tags (`git_sha`, `snapshot_id`).
+- [x] Register model `puenktlich-delay`; set alias `@challenger`.
+- [x] `gate.py`: rules from `configs/training.yaml`; champion re-evaluated on the same test set.
+- [x] `registry/artifacts.py` + `release.py`: export `models/<version>/` with `manifest.json` + SHA-256; pointer abstraction (`pointer.py`: local file now, SSM later); set `@champion`.
+- [x] DAG `training_pipeline` (see `architecture.md` §5.2) — gate rejection ends **green**.
+- [x] `scripts/rollback.py` + `make rollback`.
 
 Exit criteria
 - First champion exists in MLflow and in MinIO `models/<v>/`, and beats the baseline by the configured margin.

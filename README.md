@@ -386,6 +386,8 @@ History backfill (Phase 2): `make airflow-env` (once) → `make airflow-up` → 
 
 Training snapshot + baseline (Phase 3): `make baseline` builds `gold/training_sets/<id>/` from the backfilled silver and writes the baseline metrics next to it.
 
+Training (Phase 4): `make train` runs snapshot → LightGBM → calibration → evaluation → MLflow registry → gate → release in one process; `make train-dag` triggers the same steps as the Airflow DAG `training_pipeline`. A promoted model lands in MinIO `models/<version>/` (SHA-256 manifest) and `models/_pointer.json`; `make rollback` swaps the champion back to the previous version.
+
 ---
 
 ## 10. Deploy your own

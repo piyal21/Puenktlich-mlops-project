@@ -3,6 +3,71 @@
 One entry per phase branch (owner rule, from Phase 2 on). Phases 0–1 are described in [`Phases/`](Phases/).
 Only measured numbers; anything not measured is `TBD`.
 
+## Phase 4 — Training, tracking, registry, gate (`phase-4/training`)
+
+**Built**
+- `dbdelay.training`: `train` (LightGBM Booster, native categoricals, 8-point grid, early stopping on valid,
+  deterministic), `calibrate` (isotonic on valid → `calibrator.json`, applied with `numpy.interp`), `gate` (5 checks,
+  tie with champion rejects), `tracking` (`Tracker` protocol + `MlflowTracker`), `model_card`, `pipeline` (one
+  function per DAG step, MLflow run as hand-off), `run_train` (`make train`); `TrainingReport` in `evaluate`;
+  `run_baseline.fit_baseline` extracted.
+- `dbdelay.registry`: `artifacts` (6-file bundle + `manifest.json` with SHA-256, fail-closed loader, `ModelBundle.predict`),
+  `pointer` (`models/_pointer.json` in MinIO), `release` (upload → verify → pointer → `@champion`, idempotent;
+  `rollback`); `scripts/rollback.py` (`make rollback`).
+- `configs/training.yaml`: seed, LightGBM grid, risk thresholds 0.20 / 0.45, gate (architecture §5.4), registry, release.
+- Airflow: `training_pipeline` DAG (11 tasks, `@monthly`, gate branch; rejection ends green), image installs
+  `dbdelay[pipelines,training]` + `libgomp1`, `GIT_SHA` build arg; `make train-dag`; `check_dags.py` checks the
+  training DAG shape and that no TaskFlow argument uses an Airflow context name.
+- `notebooks/03_training.ipynb` (+ `scripts/make_training_notebook.py`): champion vs baseline, slices, calibration,
+  feature importance.
+
+**Key decisions**
+- Owner: deps `lightgbm` + `mlflow-skinny` (3.16, client only); pointer = MinIO object; `make train` + DAG share step
+  functions; artifact smoke test until Phase 5; MLflow run = step hand-off; equal Brier vs champion → rejected.
+- Model saved as LightGBM text, no pickle / pyfunc; champion re-scored on the same test rows with its own spec.
+- Every run logs config contents, library versions and the `uv.lock` hash; every model version is tagged `git_sha`,
+  `snapshot_id`, `gate_result` (rules.md §5.4).
+- MLflow client defaults (set by `MlflowTracker`, explicit env wins): proxied artifact transfers (the server's presigned
+  URLs point at `minio:9000`, unreachable from the host) and no stdout run-URL print (emoji crashed cp1252 consoles).
+- MLflow server: `MLFLOW_SERVER_ALLOWED_HOSTS` lists localhost + `mlflow` (3.16's DNS-rebinding guard returned 403 to
+  Airflow tasks). No matplotlib at training time (JSON tables in MLflow, plots in the notebook).
+
+**Tested**
+- `make lint` + `make typecheck` clean; `make test`: **292 passed**, coverage 97 %.
+- `make test-integration`: **7 passed** (incl. MinIO + MLflow: weak v1 → better v2 → identical v3 rejected → rollback).
+- `make test-dags`: **DAG check passed**.
+- Real `make train` #1 (≈ 20 min, snapshot `2026-08-31_38b45c7a` reused): **v1 promoted**. Test (176,628 rows):
+  Brier **0.1408** vs baseline 0.1520 (gate limit 0.1444, **7.4 %** better), ROC-AUC **0.8078** vs 0.7714, PR-AUC
+  **0.5959** vs 0.5272, log loss **0.4391** vs 0.4704, ECE 0.0218 vs 0.0124. Best grid point `num_leaves=127`,
+  `learning_rate=0.1`, `min_data_in_leaf=500`, 477 trees. Worst train-type AUC drop vs baseline 0.008; 20 small train
+  types skipped.
+- Real `make train` #2 (≈ 20 min): identical model → **rejected** (`brier_vs_champion`), exit 0.
+- DAG `training_pipeline` (image `c1f7ecc`, Airflow): 2 runs **green** (≈ 21 min each; train_lightgbm ≈ 17 min). Both
+  trained an identical model → v3 / v4 **rejected** (`brier_vs_champion`), `record_rejection` ran, `release` and
+  `smoke_test` skipped; pointer and `@champion` stayed on v1; v3/v4 carry `git_sha`, `snapshot_id`, `gate_result` and
+  the run carries library versions. Same snapshot id inside the image (`2026-08-31_38b45c7a`). Earlier DAG attempts
+  failed before the fixes (MLflow 403 host guard, `run_id` arg clash) or were killed by PC standby.
+- `make rollback` on the real models: refuses with "no previous model version to roll back to" (only v1 was ever
+  promoted), exit 1, pointer unchanged. A real swap is covered by the integration test (v2 → v1 and alias moved).
+- Final whole-branch review (independent, opus): 0 Critical, 1 Important (fixed test-first), 9 Minor (deferred below).
+
+**Known gaps / open items**
+- Valid split used for early stopping, grid selection and calibration; test ECE (0.022) above the baseline's (0.012).
+- `month` Sep–Nov unseen in train. Killed Airflow tasks leave their MLflow run RUNNING (Python errors mark it FAILED).
+- PC standby kills Airflow tasks (task token expires) — keep the PC awake during DAG runs.
+- First `make train-dag` unpauses the DAG, which also starts the latest `@monthly` run.
+- MLflow client telemetry is on by default (`MLFLOW_DISABLE_TELEMETRY`) — owner decision pending.
+- Deferred review minors: LightGBM param aliases (e.g. `n_estimators`) not rejected in `lightgbm.params`; rollback
+  re-run after an alias failure swaps again; no pointer lock (one trainer at a time); `is_late` cast before silver
+  validation drops the dtype check; failed smoke test leaves the pointer on that version (run `make rollback`); an
+  error in `finish_run(failed=True)` masks the original; `os.environ` touched in `MlflowTracker` / `current_git_sha`;
+  fake vs real tracker differ on missing artifacts.
+
+**Docs touched**
+- `docs/architecture.md` (§3.2 pointer, §5.2 Phase 4 notes, §5.4 tie/skip rules, §6 manifest coverage),
+  `docs/phases.md` (Phase 4 ticked), `README.md`, `CLAUDE.md`, `Phases/phase-4-training.md`, `Phases/README.md`,
+  this file.
+
 ## Phase 3 — Features & baseline (`phase-3/features-baseline`)
 
 **Built**
