@@ -4,6 +4,7 @@ Steps hand off through one MLflow run: bundle files are logged under `bundle/`, 
 (snapshot id, run id, model version) travel between steps.
 """
 
+import hashlib
 import io
 import json
 import os
@@ -12,6 +13,7 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from importlib import metadata
 from pathlib import Path
 
 import lightgbm as lgb
@@ -61,6 +63,17 @@ from dbdelay.training.train import (
 )
 
 BUNDLE_DIR = "bundle/"
+CONFIG_FILE = "training_config.json"
+LOCK_FILE = Path("uv.lock")  # present in the repo checkout; the Airflow image installs via pip
+# Library versions logged with every run (rules.md §5.4: the environment of the run).
+TRACKED_PACKAGES: tuple[str, ...] = (
+    "lightgbm",
+    "scikit-learn",
+    "numpy",
+    "pandas",
+    "pyarrow",
+    "mlflow-skinny",
+)
 GATE_FILE = "gate.json"
 GRID_FILE = "grid_scores.json"
 SMOKE_FILE = "smoke/expected.json"
@@ -126,6 +139,19 @@ def make_context(
         workdir=workdir,
         git_sha=current_git_sha(),
     )
+
+
+def environment_tags() -> dict[str, str]:
+    """`version.<package>` per tracked library, plus `uv_lock_sha256` when `uv.lock` exists."""
+    tags: dict[str, str] = {}
+    for package in TRACKED_PACKAGES:
+        try:
+            tags[f"version.{package}"] = metadata.version(package)
+        except metadata.PackageNotFoundError:
+            tags[f"version.{package}"] = "missing"
+    if LOCK_FILE.is_file():
+        tags["uv_lock_sha256"] = hashlib.sha256(LOCK_FILE.read_bytes()).hexdigest()
+    return tags
 
 
 @contextmanager
@@ -207,9 +233,11 @@ def train_model(ctx: PipelineContext, snapshot_id: str) -> str:
             "git_sha": ctx.git_sha,
             "spec_hash": spec.spec_hash,
             "feature_version": str(spec.version),
+            **environment_tags(),
         },
     )
     with _failing_run(ctx, run_id):
+        ctx.tracker.log_bytes(run_id, CONFIG_FILE, _json(cfg.model_dump(mode="json")))
         source = f"s3://{ctx.data_store.bucket}/{snapshot_prefix(snapshot_id, ctx.root)}"
         ctx.tracker.log_snapshot(run_id, snapshot_id, manifest.content_hash, source)
         result = train_lightgbm(
@@ -386,10 +414,16 @@ def register_model(ctx: PipelineContext, run_id: str) -> str:
     """Register `bundle/` as a new model version with alias @challenger; return the version."""
     name = ctx.cfg.registry.model_name
     with _failing_run(ctx, run_id):
-        version = ctx.tracker.register_version(name, run_id, BUNDLE_DIR.rstrip("/"))
-        ctx.tracker.set_alias(name, CHALLENGER, version)
-        ctx.tracker.set_tags(run_id, {"model_version": version})
-    return version
+        report = TrainingReport.model_validate_json(
+            ctx.tracker.load_bytes(run_id, BUNDLE_DIR + "metrics.json")
+        )
+        model_version = ctx.tracker.register_version(name, run_id, BUNDLE_DIR.rstrip("/"))
+        ctx.tracker.set_version_tags(
+            name, model_version, {"git_sha": report.git_sha, "snapshot_id": report.snapshot_id}
+        )
+        ctx.tracker.set_alias(name, CHALLENGER, model_version)
+        ctx.tracker.set_tags(run_id, {"model_version": model_version})
+    return model_version
 
 
 def run_gate(ctx: PipelineContext, run_id: str, version: str) -> GateDecision:
@@ -402,7 +436,7 @@ def run_gate(ctx: PipelineContext, run_id: str, version: str) -> GateDecision:
         status = "passed" if decision.passed else "rejected"
         ctx.tracker.log_bytes(run_id, GATE_FILE, decision.model_dump_json(indent=2).encode())
         ctx.tracker.set_tags(run_id, {"gate": status})
-        ctx.tracker.set_version_tags(ctx.cfg.registry.model_name, version, {"gate": status})
+        ctx.tracker.set_version_tags(ctx.cfg.registry.model_name, version, {"gate_result": status})
     return decision
 
 

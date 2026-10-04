@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -70,7 +71,7 @@ def test_first_run_promotes_second_identical_run_is_rejected(
     assert second.champion_version == "1"
     assert tracker.get_alias(MODEL, CHALLENGER) == "2"
     assert tracker.get_alias(MODEL, CHAMPION) == "1"
-    assert tracker.version_tags[(MODEL, "2")]["gate"] == "rejected"
+    assert tracker.version_tags[(MODEL, "2")]["gate_result"] == "rejected"
     assert tracker.runs[second.run_id].status == "FINISHED"
     assert not signal_store.exists(models_prefix("2") + "manifest.json")
 
@@ -165,3 +166,27 @@ def test_run_train_main(
     config.write_text(yaml.safe_dump(SIGNAL_CONFIG.model_dump(mode="json")), encoding="utf-8")
     assert run_train.main(["--config", str(config)]) == 0
     assert tracker.get_alias(MODEL, CHAMPION) == "1"
+
+
+def test_run_logs_config_and_environment(signal_store: ObjectStore, tmp_path: Path) -> None:
+    # docs/rules.md §5.4: config file contents + environment (uv.lock hash) on every run.
+    Path("uv.lock").write_bytes(b"lock-content")  # cwd = isolated tmp dir (conftest)
+    tracker = FakeTracker()
+    result = run_training_pipeline(_ctx(signal_store, tracker, tmp_path))
+    logged = json.loads(tracker.load_bytes(result.run_id, pipeline.CONFIG_FILE))
+    assert logged == SIGNAL_CONFIG.model_dump(mode="json")
+    tags = tracker.runs[result.run_id].tags
+    assert tags["uv_lock_sha256"] == hashlib.sha256(b"lock-content").hexdigest()
+    for package in ("lightgbm", "scikit-learn", "numpy", "pandas", "pyarrow", "mlflow-skinny"):
+        assert tags[f"version.{package}"]
+
+
+def test_model_version_carries_lineage_tags(signal_store: ObjectStore, tmp_path: Path) -> None:
+    # docs/rules.md §5.4: every registered model carries git_sha, snapshot_id, gate_result.
+    tracker = FakeTracker()
+    result = run_training_pipeline(_ctx(signal_store, tracker, tmp_path))
+    assert tracker.version_tags[(MODEL, result.version)] == {
+        "git_sha": "abc1234",
+        "snapshot_id": result.snapshot_id,
+        "gate_result": "passed",
+    }
