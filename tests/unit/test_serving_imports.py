@@ -13,6 +13,7 @@ SERVING_MODULES = [
     "dbdelay.registry.artifacts",
     "dbdelay.training.calibrate",
     "dbdelay.serving.model_loader",
+    "dbdelay.serving.board",
 ]
 
 _BLOCK_SKLEARN = """
