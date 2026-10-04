@@ -2,7 +2,9 @@
 (docs/architecture.md §5.2). `sync_live_silver` joins in Phase 7.
 
 Thin orchestration only; every step is a function in `dbdelay.training.pipeline`. The MLflow run
-carries the model between tasks; XCom carries ids only. A rejected challenger ends green.
+carries the model between tasks; XCom carries ids only. Task arguments must not use Airflow
+context names (`run_id` is the DAG run's id), hence `mlflow_run_id`. A rejected challenger
+ends green.
 """
 
 from collections.abc import Callable
@@ -62,49 +64,50 @@ def training_pipeline() -> None:
         return str(_run(pipeline.train_model, snapshot_id))
 
     @task
-    def calibrate(snapshot_id: str, run_id: str) -> str:
+    def calibrate(snapshot_id: str, mlflow_run_id: str) -> str:
         from dbdelay.training import pipeline
 
-        _run(pipeline.calibrate_model, snapshot_id, run_id)
-        return run_id
+        _run(pipeline.calibrate_model, snapshot_id, mlflow_run_id)
+        return mlflow_run_id
 
     @task
-    def evaluate(snapshot_id: str, run_id: str) -> str:
+    def evaluate(snapshot_id: str, mlflow_run_id: str) -> str:
         from dbdelay.training import pipeline
 
-        _run(pipeline.evaluate_models, snapshot_id, run_id)
-        return run_id
+        _run(pipeline.evaluate_models, snapshot_id, mlflow_run_id)
+        return mlflow_run_id
 
     @task
-    def register(run_id: str) -> dict[str, str]:
+    def register(mlflow_run_id: str) -> dict[str, str]:
         from dbdelay.training import pipeline
 
-        return {"run_id": run_id, "version": str(_run(pipeline.register_model, run_id))}
+        version = str(_run(pipeline.register_model, mlflow_run_id))
+        return {"mlflow_run_id": mlflow_run_id, "version": version}
 
     @task.branch
     def gate(registered: dict[str, str]) -> str:
         from dbdelay.training import pipeline
 
-        decision = _run(pipeline.run_gate, registered["run_id"], registered["version"])
+        decision = _run(pipeline.run_gate, registered["mlflow_run_id"], registered["version"])
         return "release" if decision.passed else "record_rejection"
 
     @task
     def record_rejection(registered: dict[str, str]) -> None:
         from dbdelay.training import pipeline
 
-        _run(pipeline.record_rejection, registered["run_id"], registered["version"])
+        _run(pipeline.record_rejection, registered["mlflow_run_id"], registered["version"])
 
     @task
     def release(registered: dict[str, str]) -> None:
         from dbdelay.training import pipeline
 
-        _run(pipeline.release_model, registered["run_id"], registered["version"])
+        _run(pipeline.release_model, registered["mlflow_run_id"], registered["version"])
 
     @task
     def smoke_test(snapshot_id: str, registered: dict[str, str]) -> None:
         from dbdelay.training import pipeline
 
-        _run(pipeline.smoke_test, snapshot_id, registered["run_id"], registered["version"])
+        _run(pipeline.smoke_test, snapshot_id, registered["mlflow_run_id"], registered["version"])
 
     snapshot_id = validate_snapshot(build_training_set())
     baseline = train_baseline(snapshot_id)

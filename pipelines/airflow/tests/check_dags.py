@@ -1,6 +1,9 @@
 """Parse DAGs inside the Airflow image and assert the DAGs' shape (`make test-dags`)."""
 
+import inspect
 import sys
+
+from airflow.sdk.definitions.context import Context
 
 try:
     from airflow.dag_processing.dagbag import DagBag
@@ -62,6 +65,16 @@ else:
             errors.append("evaluate must wait for train_baseline")
         if downstream["release"] != {"smoke_test"}:
             errors.append("smoke_test must follow release")
+# TaskFlow arguments must not be named like context keys (e.g. `run_id`): Airflow raises
+# "is a part of kwargs and therefore reserved" only when the task runs.
+reserved = set(Context.__annotations__)
+for parsed in bag.dags.values():
+    for parsed_task in parsed.tasks:
+        func = getattr(parsed_task, "python_callable", None)
+        if func is not None:
+            clash = reserved & set(inspect.signature(func).parameters)
+            if clash:
+                errors.append(f"{parsed.dag_id}.{parsed_task.task_id} uses reserved names {clash}")
 if errors:
     sys.stderr.write("\n".join(errors) + "\n")
     sys.exit(1)
