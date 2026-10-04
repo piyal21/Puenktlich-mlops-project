@@ -5,7 +5,6 @@ from typing import Literal
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
-from sklearn.isotonic import IsotonicRegression
 
 from dbdelay.errors import DataValidationError
 
@@ -38,6 +37,9 @@ class IsotonicCalibrator(BaseModel):
         Raises:
             DataValidationError: if inputs are empty or of different length.
         """
+        # Fitting only (training); serving loads calibrator.json without scikit-learn.
+        from sklearn.isotonic import IsotonicRegression  # noqa: PLC0415
+
         scores = np.asarray(raw, dtype=float)
         targets = np.asarray(labels, dtype=float)
         if scores.size == 0 or scores.shape != targets.shape:
