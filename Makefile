@@ -5,6 +5,8 @@
 COMPOSE := docker compose
 # Baked into the Airflow image as GIT_SHA (MLflow run tag `git_sha`).
 export GIT_SHA := $(shell git rev-parse --short HEAD)
+# Owner decision 2026-10-05: MLflow usage telemetry off for every make recipe (train, rollback).
+export MLFLOW_DISABLE_TELEMETRY := true
 
 .PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag
 
