@@ -8,6 +8,8 @@ x-airflow-common: &airflow-common
   build:
     context: .
     dockerfile: pipelines/airflow/Dockerfile
+    args:
+      GIT_SHA: ${GIT_SHA:-unknown}
   image: puenktlich/airflow:local
   volumes:
     - ./pipelines/airflow/dags:/opt/airflow/dags:ro
@@ -33,6 +35,9 @@ x-airflow-env: &airflow-env
   STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY}
   DATA_BUCKET: ${DATA_BUCKET:-puenktlich-local}
   STATIONS_FILE: /opt/airflow/configs/stations.yaml
+  TRAINING_CONFIG_FILE: /opt/airflow/configs/training.yaml
+  MODELS_BUCKET: ${MODELS_BUCKET:-puenktlich-local}
+  MLFLOW_TRACKING_URI: http://mlflow:5000
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
 services:

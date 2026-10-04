@@ -1,4 +1,4 @@
-"""Parse DAGs inside the Airflow image and assert the backfill DAG's shape (`make test-dags`)."""
+"""Parse DAGs inside the Airflow image and assert the DAGs' shape (`make test-dags`)."""
 
 import sys
 
@@ -34,6 +34,34 @@ else:
         errors.append(f"unexpected default months: {dag.params['months']}")
     if dag.params["force_download"] is not False:
         errors.append("force_download must default to False")
+TRAINING_TASKS = {
+    "build_training_set",
+    "validate_snapshot",
+    "train_baseline",
+    "train_lightgbm",
+    "calibrate",
+    "evaluate",
+    "register",
+    "gate",
+    "record_rejection",
+    "release",
+    "smoke_test",
+}
+training = bag.dags.get("training_pipeline")
+if training is None:
+    errors.append("training_pipeline not found")
+else:
+    found = {t.task_id for t in training.tasks}
+    if found != TRAINING_TASKS:
+        errors.append(f"unexpected training tasks: {sorted(found)}")
+    else:
+        downstream = {t.task_id: set(t.downstream_task_ids) for t in training.tasks}
+        if downstream["gate"] != {"release", "record_rejection"}:
+            errors.append(f"gate must branch to release/record_rejection: {downstream['gate']}")
+        if "evaluate" not in downstream["train_baseline"]:
+            errors.append("evaluate must wait for train_baseline")
+        if downstream["release"] != {"smoke_test"}:
+            errors.append("smoke_test must follow release")
 if errors:
     sys.stderr.write("\n".join(errors) + "\n")
     sys.exit(1)
