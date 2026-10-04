@@ -5,7 +5,7 @@ import sys
 from collections.abc import Mapping, Sequence
 
 from dbdelay.config import get_settings
-from dbdelay.errors import ArtifactIntegrityError, ModelNotAvailableError
+from dbdelay.errors import ArtifactIntegrityError, DbDelayError, ModelNotAvailableError
 from dbdelay.registry.artifacts import (
     MANIFEST_FILE,
     Manifest,
@@ -87,11 +87,16 @@ def rollback_main(argv: Sequence[str] | None = None, *, tracker: Tracker | None 
     settings = get_settings()
     cfg = load_training_config(settings.training_config_file)
     store = ObjectStore(make_s3_client(settings), settings.models_bucket)
-    state = rollback(
-        store,
-        ObjectStorePointer(store),
-        tracker or MlflowTracker(settings.mlflow_tracking_uri),
-        model_name=cfg.registry.model_name,
-    )
+    try:
+        state = rollback(
+            store,
+            ObjectStorePointer(store),
+            tracker or MlflowTracker(settings.mlflow_tracking_uri),
+            model_name=cfg.registry.model_name,
+        )
+    except DbDelayError as exc:
+        # Operator-facing: one line, pointer unchanged (rollback verifies before writing).
+        sys.stderr.write(f"rollback refused: {exc}\n")
+        return 1
     sys.stdout.write(f"champion {state.champion_version} (was {state.previous_version})\n")
     return 0

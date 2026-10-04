@@ -118,3 +118,22 @@ def test_rollback_main_prints_versions(
     assert rollback_main([], tracker=tracker) == 0
     assert "champion 1 (was 2)" in capsys.readouterr().out
     assert tracker.get_alias("m", CHAMPION) == "1"
+
+
+def test_rollback_main_without_previous_prints_reason(
+    s3_store: ObjectStore,
+    bundle_files: Files,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config = Path("training.yaml")
+    config.write_text(yaml.safe_dump(MARCH_CONFIG.model_dump(mode="json")), encoding="utf-8")
+    monkeypatch.setenv("MODELS_BUCKET", s3_store.bucket)
+    monkeypatch.setenv("TRAINING_CONFIG_FILE", str(config))
+    tracker = FakeTracker()
+    _release(s3_store, bundle_files, tracker, "1")
+    assert rollback_main([], tracker=tracker) == 1
+    assert "rollback refused: no previous model version" in capsys.readouterr().err
+    state = ObjectStorePointer(s3_store).get()
+    assert state is not None
+    assert state.champion_version == "1"
