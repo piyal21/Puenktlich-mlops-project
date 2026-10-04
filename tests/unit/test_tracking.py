@@ -7,8 +7,8 @@ from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
 from dbdelay.errors import ExternalServiceError
 from dbdelay.training.tracking import (
+    CLIENT_ENV_DEFAULTS,
     MAX_DIGEST,
-    PROXY_MULTIPART_ENV,
     MlflowTracker,
     Tracker,
     dataset_digest,
@@ -56,16 +56,21 @@ def test_digest_is_cut_to_mlflow_limit() -> None:
     assert len(dataset_digest("a" * 64)) == MAX_DIGEST
 
 
-def test_tracker_forces_proxied_artifact_transfers(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tracker_sets_client_env_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     # Presigned URLs from the server point at the in-cluster MinIO host (minio:9000), which is
-    # not reachable from the developer machine -> all transfers must go through the proxy.
-    for name in PROXY_MULTIPART_ENV:
+    # not reachable from the developer machine -> transfers go through the proxy. MLflow's
+    # emoji "View run" print crashes cp1252 consoles on Windows -> suppressed.
+    for name in CLIENT_ENV_DEFAULTS:
         monkeypatch.delenv(name, raising=False)
     MlflowTracker("http://127.0.0.1:9")
-    assert all(os.environ[name] == "false" for name in PROXY_MULTIPART_ENV)
+    assert {name: os.environ[name] for name in CLIENT_ENV_DEFAULTS} == {
+        "MLFLOW_ENABLE_PROXY_MULTIPART_DOWNLOAD": "false",
+        "MLFLOW_ENABLE_PROXY_MULTIPART_UPLOAD": "false",
+        "MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT": "true",
+    }
 
 
-def test_tracker_keeps_explicit_multipart_setting(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(PROXY_MULTIPART_ENV[0], "true")
+def test_tracker_keeps_explicit_client_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MLFLOW_ENABLE_PROXY_MULTIPART_DOWNLOAD", "true")
     MlflowTracker("http://127.0.0.1:9")
-    assert os.environ[PROXY_MULTIPART_ENV[0]] == "true"
+    assert os.environ["MLFLOW_ENABLE_PROXY_MULTIPART_DOWNLOAD"] == "true"
