@@ -1,3 +1,4 @@
+import os
 from typing import Any
 
 import pytest
@@ -5,7 +6,13 @@ from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
 from dbdelay.errors import ExternalServiceError
-from dbdelay.training.tracking import MAX_DIGEST, MlflowTracker, Tracker, dataset_digest
+from dbdelay.training.tracking import (
+    MAX_DIGEST,
+    PROXY_MULTIPART_ENV,
+    MlflowTracker,
+    Tracker,
+    dataset_digest,
+)
 from tests.fakes import FakeTracker
 
 
@@ -47,3 +54,18 @@ def test_missing_alias_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_digest_is_cut_to_mlflow_limit() -> None:
     assert len(dataset_digest("a" * 64)) == MAX_DIGEST
+
+
+def test_tracker_forces_proxied_artifact_transfers(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Presigned URLs from the server point at the in-cluster MinIO host (minio:9000), which is
+    # not reachable from the developer machine -> all transfers must go through the proxy.
+    for name in PROXY_MULTIPART_ENV:
+        monkeypatch.delenv(name, raising=False)
+    MlflowTracker("http://127.0.0.1:9")
+    assert all(os.environ[name] == "false" for name in PROXY_MULTIPART_ENV)
+
+
+def test_tracker_keeps_explicit_multipart_setting(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(PROXY_MULTIPART_ENV[0], "true")
+    MlflowTracker("http://127.0.0.1:9")
+    assert os.environ[PROXY_MULTIPART_ENV[0]] == "true"

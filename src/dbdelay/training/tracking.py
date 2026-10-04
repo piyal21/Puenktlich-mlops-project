@@ -5,6 +5,7 @@ storage credentials); unit tests use an in-memory fake with the same methods.
 """
 
 import json
+import os
 import tempfile
 import time
 from collections.abc import Callable, Mapping
@@ -21,6 +22,12 @@ from dbdelay.errors import ExternalServiceError
 T = TypeVar("T")
 MAX_DIGEST = 36  # MLflow's limit for dataset digests
 _MISSING_CODES = frozenset({"RESOURCE_DOES_NOT_EXIST", "INVALID_PARAMETER_VALUE"})
+# The server hands out presigned URLs for its own artifact endpoint (minio:9000 inside Docker),
+# which the host cannot resolve. Proxied transfers work from host and containers alike.
+PROXY_MULTIPART_ENV: tuple[str, ...] = (
+    "MLFLOW_ENABLE_PROXY_MULTIPART_DOWNLOAD",
+    "MLFLOW_ENABLE_PROXY_MULTIPART_UPLOAD",
+)
 
 
 class Tracker(Protocol):
@@ -49,6 +56,8 @@ class MlflowTracker:
     """
 
     def __init__(self, tracking_uri: str) -> None:
+        for name in PROXY_MULTIPART_ENV:
+            os.environ.setdefault(name, "false")  # an explicit setting wins
         self._uri = tracking_uri
         self._client = MlflowClient(tracking_uri=tracking_uri, registry_uri=tracking_uri)
 
