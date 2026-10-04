@@ -51,6 +51,8 @@ class Settings(BaseSettings):
 
     # Station list (relative to the working directory; containers set an absolute path).
     stations_file: Path = Path("configs/stations.yaml")
+    # Training config (relative to the working directory; containers set an absolute path).
+    training_config_file: Path = Path("configs/training.yaml")
 
 
 @lru_cache(maxsize=1)

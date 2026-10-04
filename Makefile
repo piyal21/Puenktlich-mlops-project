@@ -3,8 +3,10 @@
 
 .DEFAULT_GOAL := help
 COMPOSE := docker compose
+# Baked into the Airflow image as GIT_SHA (MLflow run tag `git_sha`).
+export GIT_SHA := $(shell git rev-parse --short HEAD)
 
-.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline
+.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag
 
 help: ## Show available targets
 	@uv run python -c "import re; [print(f'{m[0]:<18} {m[1]}') for m in re.findall(r'^([a-z-]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -63,3 +65,13 @@ backfill: ## Unpause and trigger backfill_history with its default 9 months
 
 baseline: ## Build the gold training snapshot and evaluate the late-rate baseline (Phase 3)
 	uv run python -m dbdelay.training.run_baseline
+
+train: ## Train, evaluate, gate and (if it passes) release a model; same steps as the DAG (Phase 4)
+	uv run python -m dbdelay.training.run_train
+
+rollback: ## Point the champion back at the previous model version (pointer + MLflow alias)
+	uv run python scripts/rollback.py
+
+train-dag: ## Unpause and trigger training_pipeline in Airflow (Phase 4)
+	$(COMPOSE) --profile airflow exec airflow-scheduler airflow dags unpause training_pipeline
+	$(COMPOSE) --profile airflow exec airflow-scheduler airflow dags trigger training_pipeline

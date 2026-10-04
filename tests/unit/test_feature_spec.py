@@ -1,13 +1,16 @@
 import pandas as pd
 import pytest
+from pydantic import ValidationError
 
 from dbdelay.data.stations import Station
 from dbdelay.errors import DataValidationError
 from dbdelay.features.spec import (
+    CATEGORICAL_FEATURES,
     FEATURE_COLUMNS,
     FORBIDDEN_COLUMNS,
     OTHER,
     FeatureSpec,
+    RiskThresholds,
     category_keys,
     fit_spec,
     require_columns,
@@ -94,3 +97,19 @@ def test_missing_planned_departure_is_rejected() -> None:
     frame.loc[1, "planned_departure_utc"] = pd.NaT
     with pytest.raises(DataValidationError, match="planned_departure_utc"):
         require_columns(frame)
+
+
+def test_risk_thresholds_round_trip_and_hash_stable_when_absent() -> None:
+    spec = FeatureSpec(
+        min_count=1, levels={c: (OTHER,) for c in CATEGORICAL_FEATURES}, station_states={}
+    )
+    with_risk = spec.model_copy(update={"risk_thresholds": RiskThresholds(medium=0.2, high=0.45)})
+    assert FeatureSpec.from_json(with_risk.to_json()) == with_risk
+    assert with_risk.spec_hash != spec.spec_hash
+    # Phase 3 specs (no thresholds) keep their hash: None is not part of the hashed JSON.
+    assert '"risk_thresholds"' not in spec.model_dump_json(exclude_none=True)
+
+
+def test_risk_thresholds_must_be_ordered() -> None:
+    with pytest.raises(ValidationError):
+        RiskThresholds(medium=0.5, high=0.4)

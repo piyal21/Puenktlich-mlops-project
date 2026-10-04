@@ -37,3 +37,11 @@ def s3_store() -> Iterator[ObjectStore]:
             Bucket=TEST_BUCKET, CreateBucketConfiguration={"LocationConstraint": "eu-central-1"}
         )
         yield ObjectStore(client, TEST_BUCKET)
+
+
+@pytest.fixture(scope="session")
+def bundle_files() -> dict[str, bytes]:
+    """A complete, valid model bundle trained on the signal data (built once per session)."""
+    from tests.bundles import make_bundle_files  # noqa: PLC0415 - needs dbdelay.registry
+
+    return make_bundle_files()

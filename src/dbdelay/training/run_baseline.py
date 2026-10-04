@@ -21,26 +21,27 @@ EVAL_SPLITS: tuple[str, ...] = ("valid", "test")
 BASELINE_DIR = "baseline/"
 
 
-def run_baseline(
+def fit_baseline(  # noqa: PLR0913 - store, cfg, stations, snapshot, workdir, root
     store: ObjectStore,
     cfg: TrainingConfig,
     stations: Sequence[Station],
+    snapshot_id: str,
     workdir: Path,
     *,
     root: str = "",
 ) -> EvaluationReport:
-    """Build or reuse the snapshot, fit spec + baseline on train, evaluate valid and test."""
-    manifest = build_snapshot(store, cfg, workdir, root=root)
+    """Fit spec + baseline on an existing snapshot's train split, evaluate valid and test, and
+    write `baseline/{feature_spec,baseline,metrics}.json` next to the snapshot."""
+    workdir.mkdir(parents=True, exist_ok=True)
     frames = {
-        name: load_snapshot_split(store, manifest.snapshot_id, name, workdir, root=root)
-        for name in SPLITS
+        name: load_snapshot_split(store, snapshot_id, name, workdir, root=root) for name in SPLITS
     }
     spec = fit_spec(frames["train"], stations, cfg.features.min_count)
     features = {name: build_features(frame, spec) for name, frame in frames.items()}
     labels = {name: frame["is_late"].to_numpy(dtype=bool) for name, frame in frames.items()}
     model = BaselineModel.fit(features["train"], labels["train"], cfg.baseline.min_count)
     report = EvaluationReport(
-        snapshot_id=manifest.snapshot_id,
+        snapshot_id=snapshot_id,
         spec_hash=spec.spec_hash,
         config=cfg.model_dump(mode="json"),
         splits={
@@ -54,13 +55,26 @@ def run_baseline(
             for name in EVAL_SPLITS
         },
     )
-    prefix = snapshot_prefix(manifest.snapshot_id, root) + BASELINE_DIR
+    prefix = snapshot_prefix(snapshot_id, root) + BASELINE_DIR
     store.put_bytes(prefix + "feature_spec.json", spec.to_json().encode(), "application/json")
     store.put_bytes(prefix + "baseline.json", model.to_json().encode(), "application/json")
     store.put_bytes(
         prefix + "metrics.json", report.model_dump_json(indent=2).encode(), "application/json"
     )
     return report
+
+
+def run_baseline(
+    store: ObjectStore,
+    cfg: TrainingConfig,
+    stations: Sequence[Station],
+    workdir: Path,
+    *,
+    root: str = "",
+) -> EvaluationReport:
+    """Build or reuse the snapshot, fit spec + baseline on train, evaluate valid and test."""
+    manifest = build_snapshot(store, cfg, workdir, root=root)
+    return fit_baseline(store, cfg, stations, manifest.snapshot_id, workdir, root=root)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
