@@ -107,6 +107,9 @@ services:
       AWS_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY}
       AWS_DEFAULT_REGION: eu-central-1
+      # MLflow 3 rejects Host headers other than localhost (DNS-rebinding guard); Airflow tasks
+      # call it as mlflow:5000 on the compose network. Replaces the defaults, so localhost stays.
+      MLFLOW_SERVER_ALLOWED_HOSTS: localhost,localhost:5000,127.0.0.1,127.0.0.1:5000,mlflow,mlflow:5000
     command:
       - mlflow server --host 0.0.0.0 --port 5000
         --backend-store-uri "$$MLFLOW_BACKEND_STORE_URI"
