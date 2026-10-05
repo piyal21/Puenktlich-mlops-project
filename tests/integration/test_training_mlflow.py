@@ -1,5 +1,4 @@
 import uuid
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -8,7 +7,7 @@ from dbdelay.config import get_settings
 from dbdelay.data.stations import load_stations
 from dbdelay.registry.pointer import ObjectStorePointer
 from dbdelay.registry.release import CHAMPION, rollback
-from dbdelay.storage import ObjectStore, make_s3_client
+from dbdelay.storage import ObjectStore
 from dbdelay.training.config import RegistryConfig, TrainingConfig
 from dbdelay.training.pipeline import PipelineContext, run_training_pipeline
 from dbdelay.training.tracking import MlflowTracker
@@ -17,18 +16,6 @@ from tests.builders import SIGNAL_CONFIG, WEAK_LIGHTGBM, put_signal_silver
 pytestmark = pytest.mark.integration
 REPO = Path(__file__).resolve().parents[2]
 STATIONS = tuple(load_stations(REPO / "configs" / "stations.yaml"))
-
-
-@pytest.fixture
-def scratch() -> Iterator[tuple[ObjectStore, str]]:
-    settings = get_settings()
-    client = make_s3_client(settings)
-    root = f"_integration/{uuid.uuid4()}/"
-    yield ObjectStore(client, settings.data_bucket), root
-    paginator = client.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=settings.data_bucket, Prefix=root):
-        for obj in page.get("Contents", []):
-            client.delete_object(Bucket=settings.data_bucket, Key=obj["Key"])
 
 
 def test_tracker_round_trip() -> None:
