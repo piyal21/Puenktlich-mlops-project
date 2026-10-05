@@ -4,7 +4,7 @@ from datetime import date, datetime
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 from dbdelay.errors import ModelNotAvailableError
 from dbdelay.features.calendar import BERLIN
@@ -15,6 +15,8 @@ from dbdelay.serving.scoring import Prediction
 EVA_PATTERN = r"^[1-9][0-9]{6}$"
 _BERLIN = ZoneInfo(BERLIN)
 RiskLevelOut = Literal["low", "medium", "high"]
+# Years outside this range are nonsense for a timetable model (and overflow pandas timestamps).
+PREDICT_YEARS = (2000, 2099)
 
 
 def berlin(value: datetime) -> datetime:
@@ -100,6 +102,14 @@ class PredictIn(BaseModel):
     final_destination: str | None = Field(default=None, max_length=100)
     stop_index: int = Field(ge=1, le=200)
     planned_departure: AwareDatetime
+
+    @field_validator("planned_departure")
+    @classmethod
+    def _plausible_year(cls, value: datetime) -> datetime:
+        first, last = PREDICT_YEARS
+        if not first <= value.year <= last:
+            raise ValueError(f"planned_departure must be between {first} and {last}")
+        return value
 
 
 class PredictOut(BaseModel):

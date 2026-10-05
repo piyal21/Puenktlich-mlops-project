@@ -14,6 +14,8 @@ from dbdelay.registry.pointer import ModelPointer, PointerState
 from dbdelay.storage import ObjectStore
 
 Clock = Callable[[], float]
+# After a transient storage error, try again this soon instead of after a full TTL.
+RETRY_AFTER_S = 15.0
 
 
 class ModelProvider:
@@ -49,7 +51,7 @@ class ModelProvider:
             now = self._clock()
             if self._checked_at is None or now - self._checked_at >= self._ttl_s:
                 self._checked_at = now
-                self._refresh()
+                self._refresh(now)
             if self._bundle is None:
                 raise ModelNotAvailableError(self._problem)
             return self._bundle
@@ -66,14 +68,11 @@ class ModelProvider:
         with self._lock:
             return self._state
 
-    def _refresh(self) -> None:
+    def _refresh(self, now: float) -> None:
         try:
             state = self._pointer.get()
         except ExternalServiceError as exc:
-            # Transient: keep serving what we have; retry after the next TTL.
-            get_logger("api").warning("model pointer read failed", extra={"error": str(exc)})
-            if self._bundle is None:
-                self._problem = "model pointer unreadable"
+            self._transient(now, "model pointer unreadable", exc)
             return
         except ArtifactIntegrityError as exc:
             self._fail(str(exc))
@@ -86,10 +85,20 @@ class ModelProvider:
             return
         try:
             self._bundle = load_bundle(self._store, state.champion_version, self._root)
-        except (ArtifactIntegrityError, ExternalServiceError) as exc:
+        except ExternalServiceError as exc:
+            self._transient(now, f"champion v{state.champion_version} not reachable", exc)
+            return
+        except ArtifactIntegrityError as exc:
             self._fail(f"champion v{state.champion_version} not loadable: {exc}")
             return
         get_logger("api").info("champion loaded", extra={"model_version": state.champion_version})
+
+    def _transient(self, now: float, problem: str, exc: ExternalServiceError) -> None:
+        """Storage hiccup: keep serving the current bundle (if any) and retry soon."""
+        get_logger("api").warning(problem, extra={"error": str(exc)})
+        self._checked_at = now - self._ttl_s + RETRY_AFTER_S
+        if self._bundle is None:
+            self._problem = problem
 
     def _fail(self, problem: str) -> None:
         self._bundle = None

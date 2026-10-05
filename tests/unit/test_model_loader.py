@@ -137,3 +137,42 @@ def test_corrupt_pointer_fails_closed(
     provider = ModelProvider(s3_store, ObjectStorePointer(s3_store), clock=FakeClock())
     with pytest.raises(ModelNotAvailableError, match="corrupt"):
         provider.get()
+
+
+def test_storage_error_loading_new_version_keeps_current_model(
+    s3_store: ObjectStore, bundle_files: dict[str, bytes], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pointer = ObjectStorePointer(s3_store)
+    _release(s3_store, bundle_files, "1")
+    pointer.set("1", None)
+    clock = FakeClock()
+    provider = ModelProvider(s3_store, pointer, clock=clock)
+    good = provider.get()
+    _release(s3_store, bundle_files, "2")
+    pointer.set("2", "1")
+
+    def flaky(store: ObjectStore, version: str, root: str = "") -> artifacts.ModelBundle:
+        raise ExternalServiceError("get models/2/model.txt timed out")
+
+    monkeypatch.setattr(model_loader, "load_bundle", flaky)
+    clock.t = 300
+    assert provider.get() is good
+    monkeypatch.setattr(model_loader, "load_bundle", artifacts.load_bundle)
+    clock.t = 300 + model_loader.RETRY_AFTER_S  # retried soon, not after a full TTL
+    assert provider.get().manifest.version == "2"
+
+
+def test_storage_error_before_first_load_retries_soon(
+    s3_store: ObjectStore, bundle_files: dict[str, bytes]
+) -> None:
+    pointer = FlakyPointer(ObjectStorePointer(s3_store))
+    _release(s3_store, bundle_files, "1")
+    pointer.set("1", None)
+    pointer.down = True
+    clock = FakeClock()
+    provider = ModelProvider(s3_store, pointer, clock=clock)
+    with pytest.raises(ModelNotAvailableError):
+        provider.get()
+    pointer.down = False
+    clock.t = model_loader.RETRY_AFTER_S
+    assert provider.get().manifest.version == "1"

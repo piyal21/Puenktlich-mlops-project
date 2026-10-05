@@ -158,6 +158,9 @@ def test_predict_matches_board(s3_store: ObjectStore, bundle_files: dict[str, by
         ({"planned_departure": "2026-10-05T17:10:00"}, 422, "/errors/validation"),  # naive
         ({"surprise": 1}, 422, "/errors/validation"),
         ({"stop_index": 0}, 422, "/errors/validation"),
+        ({"planned_departure": "2300-01-01T10:00:00+00:00"}, 422, "/errors/validation"),
+        ({"planned_departure": "0001-01-02T10:00:00+00:00"}, 422, "/errors/validation"),
+        ({"planned_departure": "1900-01-01T10:00:00+00:00"}, 422, "/errors/validation"),
         ({"eva": "1234567"}, 404, "/errors/station-not-supported"),
     ],
 )
