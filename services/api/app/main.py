@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.deps import ServingDeps
 from app.errors import REQUEST_ID_HEADER, install_error_handlers, request_context
-from app.routers import health, stations
+from app.routers import departures, health, model, predict, stations
 from dbdelay.config import get_settings
 
 API_PREFIX = "/api/v1"
@@ -32,7 +32,7 @@ def create_app(deps: ServingDeps | None = None) -> FastAPI:
         )
     app.middleware("http")(request_context)
     install_error_handlers(app)
-    for module in (health, stations):
+    for module in (health, stations, departures, predict, model):
         app.include_router(module.router, prefix=API_PREFIX)
     return app
 

@@ -1,5 +1,5 @@
-import json
 from datetime import timedelta
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -7,6 +7,7 @@ import pytest
 from dbdelay.errors import ModelNotAvailableError
 from dbdelay.features.spec import RiskThresholds, require_columns
 from dbdelay.registry.artifacts import ModelBundle, parse_bundle
+from dbdelay.serving import scoring
 from dbdelay.serving.scoring import (
     ScheduleInput,
     predict_one,
@@ -98,9 +99,22 @@ def test_board_without_model_keeps_rows() -> None:
     assert result.predictions == [None, None]
 
 
+class RecordingLogger:
+    """Stands in for the Powertools logger; its stream is bound when first created, so stdout
+    capture would depend on test order."""
+
+    def __init__(self) -> None:
+        self.records: list[tuple[str, dict[str, Any]]] = []
+
+    def info(self, message: str, extra: dict[str, Any]) -> None:
+        self.records.append((message, extra))
+
+
 def test_board_skips_cancelled_and_logs_each_prediction(
-    bundle: ModelBundle, capsys: pytest.CaptureFixture[str]
+    bundle: ModelBundle, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    logger = RecordingLogger()
+    monkeypatch.setattr(scoring, "get_logger", lambda service: logger)
     rows = [
         departure(5),
         departure(9, is_cancelled=True, changed_departure_utc=None, delay_min=None),
@@ -111,8 +125,7 @@ def test_board_skips_cancelled_and_logs_each_prediction(
     assert result.predictions[1] is None
     assert result.predictions[0] is not None
     assert result.predictions[2] is not None
-    logs = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.strip()]
-    lines = [entry for entry in logs if entry.get("message") == "prediction"]
+    lines = [extra for message, extra in logger.records if message == "prediction"]
     assert [entry["event_id"] for entry in lines] == [rows[0].event_id, rows[2].event_id]
     assert {entry["request_id"] for entry in lines} == {"r1"}
     assert all("latency_ms" in entry and entry["model_version"] == "1" for entry in lines)
