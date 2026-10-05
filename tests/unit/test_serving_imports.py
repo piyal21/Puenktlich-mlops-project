@@ -16,6 +16,8 @@ SERVING_MODULES = [
     "dbdelay.serving.board",
     "dbdelay.serving.explain",
     "dbdelay.serving.scoring",
+    "dbdelay.serving.stations",
+    "app.main",
 ]
 
 _BLOCK_SKLEARN = """
