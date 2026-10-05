@@ -8,7 +8,7 @@ export GIT_SHA := $(shell git rev-parse --short HEAD)
 # Owner decision 2026-10-05: MLflow usage telemetry off for every make recipe (train, rollback).
 export MLFLOW_DISABLE_TELEMETRY := true
 
-.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag
+.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed
 
 help: ## Show available targets
 	@uv run python -c "import re; [print(f'{m[0]:<18} {m[1]}') for m in re.findall(r'^([a-z-]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -77,3 +77,6 @@ rollback: ## Point the champion back at the previous model version (pointer + ML
 train-dag: ## Unpause and trigger training_pipeline in Airflow (Phase 4)
 	$(COMPOSE) --profile airflow exec airflow-scheduler airflow dags unpause training_pipeline
 	$(COMPOSE) --profile airflow exec airflow-scheduler airflow dags trigger training_pipeline
+
+seed: ## Write a sample live board into MinIO (real silver day replayed onto today; Phase 5)
+	uv run python scripts/seed_sample_data.py
