@@ -93,3 +93,8 @@ api-dev: ## Run the API on the host with auto-reload (needs `make up`)
 api-requirements: ## Regenerate the API image's hash-pinned requirements from uv.lock
 	uv export --frozen --no-dev --extra api --no-emit-project --format requirements-txt -o services/api/requirements.txt
 	uv export --frozen --only-group api-local --no-emit-project --format requirements-txt -o services/api/requirements-local.txt
+
+web-check: ## Frontend lint, typecheck and component tests (needs `npm --prefix frontend ci`)
+	npm --prefix frontend run lint
+	npm --prefix frontend run typecheck
+	npm --prefix frontend test
