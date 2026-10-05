@@ -15,7 +15,7 @@
   --accent: #f5b700;
   --accent-soft: #fff4cc;
   --accent-ink: #5c4400;
-  --risk-low: #12805c;
+  --risk-low: #117b58; /* was #12805c: 4.3:1 on the soft badge, below AA */
   --risk-low-soft: #e3f4ec;
   --risk-medium: #9a5b00;
   --risk-medium-soft: #fdf0dc;
