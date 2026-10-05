@@ -133,15 +133,15 @@ You learn: MLflow tracking & registry, aliases, champion/challenger, reproducibi
 **Goal:** the full user experience works on your laptop against MinIO.
 
 Tasks
-- [ ] `dbdelay/serving/model_loader.py` (pointer → download → verify checksums → load; TTL cache), `board.py`, `explain.py`.
-- [ ] FastAPI app: routes from `architecture.md` §7, Pydantic schemas, problem+json errors, request ids, OpenAPI at `/api/docs`.
-- [ ] Local board source: `scripts/seed_sample_data.py` (+ `make seed`) writes a realistic `live/boards/latest.json.gz` into MinIO from fixtures.
-- [ ] `services/api/Dockerfile` (Lambda base image) — also runnable locally via uvicorn in compose.
-- [ ] Frontend (Vite + React + TS + Tailwind) following `design.md`: Station search, Board, Departure detail, Model Health (reads local JSON), About.
-- [ ] Tests: API route tests (TestClient, moto/MinIO), frontend component tests.
+- [x] `dbdelay/serving/model_loader.py` (pointer → download → verify checksums → load; TTL cache), `board.py`, `explain.py`.
+- [x] FastAPI app: routes from `architecture.md` §7, Pydantic schemas, problem+json errors, request ids, OpenAPI at `/api/docs`.
+- [x] Local board source: `scripts/seed_sample_data.py` (+ `make seed`) writes a realistic `live/boards/latest.json.gz` into MinIO (a real silver day replayed onto today; owner decision 2026-10-04, instead of fixtures).
+- [x] `services/api/Dockerfile` (Lambda base image) — also runnable locally via uvicorn in compose.
+- [x] Frontend (Vite + React + TS + Tailwind) following `design.md`: Station search, Board, Departure detail, Model Health (champion metrics from `/api/v1/model`; daily monitoring charts wait for Phase 9), About.
+- [x] Tests: API route tests (TestClient, moto/MinIO), frontend component tests.
 
 Exit criteria
-- `make up` (profile `app`) → open `http://localhost:5173`, search a station, see risk badges and explanations.
+- `make app-up` (profile `app`) → open `http://localhost:5173`, search a station, see risk badges and explanations.
 - API returns 503/`prediction: null` gracefully when no champion exists.
 
 You learn: model serving patterns, API design, containerizing for Lambda, frontend–API integration.
