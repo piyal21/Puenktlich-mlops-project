@@ -46,6 +46,21 @@ describe("DepartureDetail", () => {
     open({ cancelled: true, prediction: null });
     expect(screen.getByText("This departure is cancelled.")).toBeInTheDocument();
   });
+  it("locks page scrolling while open", () => {
+    const { unmount } = render(
+      <DepartureDetail
+        departure={makeDeparture()}
+        thresholds={null}
+        modelVersion="1"
+        trainedAt={null}
+        dataAsOf="2026-10-05T15:30:00+02:00"
+        onClose={vi.fn()}
+      />,
+    );
+    expect(document.body.style.overflow).toBe("hidden");
+    unmount();
+    expect(document.body.style.overflow).toBe("");
+  });
   it("keeps Tab inside the dialog", async () => {
     open();
     await userEvent.tab();

@@ -21,7 +21,7 @@ export function DepartureRow({
       <button
         type="button"
         onClick={() => onOpen(departure)}
-        className={`grid w-full grid-cols-[auto_1fr_auto] items-start gap-3 rounded-lg border border-border bg-surface p-3 text-left shadow-card transition-colors duration-150 hover:bg-surface-2 ${
+        className={`grid w-full grid-cols-[auto_1fr] items-start gap-x-3 gap-y-2 sm:grid-cols-[auto_1fr_auto] rounded-lg border border-border bg-surface p-3 text-left shadow-card transition-colors duration-150 hover:bg-surface-2 ${
           cancelled ? "opacity-70" : ""
         }`}
       >
@@ -42,7 +42,7 @@ export function DepartureRow({
             </span>
             {train.line ? <span className="text-muted">{train.line}</span> : null}
           </span>
-          <span className="block truncate font-semibold">
+          <span className="block font-semibold break-words">
             <span aria-hidden="true">→ </span>
             <span lang="de">{train.destination ?? "Destination unknown"}</span>
           </span>
@@ -50,7 +50,10 @@ export function DepartureRow({
             <span className="block text-sm text-muted">Pl. {departure.platform}</span>
           ) : null}
         </span>
-        <RiskBadge prediction={departure.prediction} cancelled={cancelled} />
+        {/* Below the destination on narrow screens so long station names keep the width. */}
+        <span className="col-start-2 justify-self-start sm:col-start-3 sm:row-start-1 sm:justify-self-end">
+          <RiskBadge prediction={departure.prediction} cancelled={cancelled} />
+        </span>
       </button>
     </li>
   );

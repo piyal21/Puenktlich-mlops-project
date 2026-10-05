@@ -30,8 +30,13 @@ export function DepartureDetail({
 
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden"; // the page behind a modal must not scroll
     closeButton.current?.focus();
-    return () => previous?.focus();
+    return () => {
+      document.body.style.overflow = overflow;
+      previous?.focus();
+    };
   }, []);
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
