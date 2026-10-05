@@ -19,7 +19,9 @@ export function BoardPage() {
   const [query, setQuery] = useState("");
   const [hours, setHours] = useState<number>(3);
   const [recent, setRecent] = useState<Station[]>(() => readRecent());
-  const [selected, setSelected] = useState<Departure | null>(null);
+  // Only the id is kept: the sheet shows the departure from the current board (fresh after each
+  // refetch) and disappears when the station changes (e.g. browser Back).
+  const [selection, setSelection] = useState<{ eva: string; eventId: string } | null>(null);
   const stations = useStations(query);
   const board = useDepartures(eva, hours);
   const model = useModel();
@@ -27,11 +29,15 @@ export function BoardPage() {
   function select(station: Station) {
     setRecent(rememberStation(station));
     setQuery("");
-    setSelected(null);
+    setSelection(null);
     void navigate(`/station/${station.eva}`);
   }
 
   const data = board.data;
+  const selected: Departure | undefined =
+    selection && selection.eva === eva
+      ? data?.departures.find((d) => d.event_id === selection.eventId)
+      : undefined;
   return (
     <div className="space-y-4">
       <StationSearch
@@ -110,7 +116,9 @@ export function BoardPage() {
             hours={hours}
             onRetry={() => void board.refetch()}
             onShowMore={() => setHours(6)}
-            onOpen={setSelected}
+            onOpen={(departure) =>
+              eva !== undefined && setSelection({ eva, eventId: departure.event_id })
+            }
           />
         </>
       )}
@@ -122,7 +130,7 @@ export function BoardPage() {
           modelVersion={data.model_version}
           trainedAt={model.data?.trained_at ?? null}
           dataAsOf={data.data_as_of}
-          onClose={() => setSelected(null)}
+          onClose={() => setSelection(null)}
         />
       ) : null}
     </div>
