@@ -94,3 +94,23 @@ def test_unparseable_model_fails_closed(
     write_bundle(s3_store, bundle_manifest(broken), broken)
     with pytest.raises(ArtifactIntegrityError, match="parse"):
         load_bundle(s3_store, "1")
+
+
+def test_bundle_carries_training_report(
+    s3_store: ObjectStore, bundle_files: dict[str, bytes]
+) -> None:
+    write_bundle(s3_store, bundle_manifest(bundle_files), bundle_files)
+    bundle = load_bundle(s3_store, "1")
+    assert bundle.report.challenger_test.overall.brier == 0.14
+    assert bundle.report.baseline_test.overall.brier == 0.16
+
+
+def test_invalid_metrics_json_fails_closed(
+    s3_store: ObjectStore, bundle_files: dict[str, bytes]
+) -> None:
+    broken = bundle_files | {"metrics.json": b"{}"}
+    files = {name: sha256_ref(broken[name]) for name in BUNDLE_FILES}
+    manifest = bundle_manifest(bundle_files).model_copy(update={"files": files})
+    write_bundle(s3_store, manifest, broken)
+    with pytest.raises(ArtifactIntegrityError, match="parse"):
+        load_bundle(s3_store, "1")

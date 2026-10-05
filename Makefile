@@ -5,8 +5,10 @@
 COMPOSE := docker compose
 # Baked into the Airflow image as GIT_SHA (MLflow run tag `git_sha`).
 export GIT_SHA := $(shell git rev-parse --short HEAD)
+# Owner decision 2026-10-05: MLflow usage telemetry off for every make recipe (train, rollback).
+export MLFLOW_DISABLE_TELEMETRY := true
 
-.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag
+.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed app-up app-down api-dev api-requirements web-check
 
 help: ## Show available targets
 	@uv run python -c "import re; [print(f'{m[0]:<18} {m[1]}') for m in re.findall(r'^([a-z-]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -75,3 +77,24 @@ rollback: ## Point the champion back at the previous model version (pointer + ML
 train-dag: ## Unpause and trigger training_pipeline in Airflow (Phase 4)
 	$(COMPOSE) --profile airflow exec airflow-scheduler airflow dags unpause training_pipeline
 	$(COMPOSE) --profile airflow exec airflow-scheduler airflow dags trigger training_pipeline
+
+seed: ## Write a sample live board into MinIO (real silver day replayed onto today; Phase 5)
+	uv run python scripts/seed_sample_data.py
+
+app-up: ## Start the API (:8000) and web app (:5173) with the core stack (profile "app")
+	$(COMPOSE) --profile app up -d --build --wait
+
+app-down: ## Stop the app and the core stack (volumes kept)
+	$(COMPOSE) --profile app down
+
+api-dev: ## Run the API on the host with auto-reload (needs `make up`)
+	uv run uvicorn app.main:app --app-dir services/api --reload --port 8000
+
+api-requirements: ## Regenerate the API image's hash-pinned requirements from uv.lock
+	uv export --frozen --no-dev --extra api --no-emit-project --format requirements-txt -o services/api/requirements.txt
+	uv export --frozen --only-group api-local --no-emit-project --format requirements-txt -o services/api/requirements-local.txt
+
+web-check: ## Frontend lint, typecheck and component tests (needs `npm --prefix frontend ci`)
+	npm --prefix frontend run lint
+	npm --prefix frontend run typecheck
+	npm --prefix frontend test

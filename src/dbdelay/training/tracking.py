@@ -31,6 +31,8 @@ CLIENT_ENV_DEFAULTS: dict[str, str] = {
     "MLFLOW_ENABLE_PROXY_MULTIPART_DOWNLOAD": "false",
     "MLFLOW_ENABLE_PROXY_MULTIPART_UPLOAD": "false",
     "MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT": "true",
+    # Owner decision 2026-10-05: no usage telemetry from this project.
+    "MLFLOW_DISABLE_TELEMETRY": "true",
 }
 
 

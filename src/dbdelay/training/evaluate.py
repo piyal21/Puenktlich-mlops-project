@@ -1,13 +1,34 @@
 """Probability metrics for the late label: overall, calibration bins and slices."""
 
-from datetime import date, datetime
-from typing import Any
-
 import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike, NDArray
-from pydantic import BaseModel, model_validator
 from sklearn.metrics import average_precision_score, brier_score_loss, log_loss, roc_auc_score
+
+from dbdelay.training.report import (
+    CalibrationBin,
+    EvaluationReport,
+    Metrics,
+    SplitReport,
+    TrainingReport,
+)
+
+__all__ = [
+    "EPS",
+    "HOUR_BANDS",
+    "SLICE_COLUMNS",
+    "CalibrationBin",
+    "EvaluationReport",
+    "Metrics",
+    "SplitReport",
+    "TrainingReport",
+    "calibration_bins",
+    "compute_metrics",
+    "evaluate_split",
+    "expected_calibration_error",
+    "hour_band",
+    "slice_frame",
+]
 
 EPS = 1e-6
 HOUR_BANDS: tuple[tuple[int, int, str], ...] = (
@@ -18,62 +39,6 @@ HOUR_BANDS: tuple[tuple[int, int, str], ...] = (
     (20, 23, "20-23"),
 )
 SLICE_COLUMNS: tuple[str, ...] = ("train_type", "eva", "hour_band")
-
-
-class Metrics(BaseModel):
-    n: int
-    base_rate: float | None
-    brier: float | None = None
-    roc_auc: float | None = None
-    pr_auc: float | None = None
-    log_loss: float | None = None
-    ece: float | None = None
-
-
-class CalibrationBin(BaseModel):
-    lower: float
-    upper: float
-    mean_pred: float
-    observed_rate: float
-    count: int
-
-
-class SplitReport(BaseModel):
-    overall: Metrics
-    calibration: list[CalibrationBin]
-    slices: dict[str, dict[str, Metrics]]
-
-
-class EvaluationReport(BaseModel):
-    """`metrics.json`."""
-
-    snapshot_id: str
-    spec_hash: str
-    config: dict[str, Any]
-    splits: dict[str, SplitReport]
-
-
-class TrainingReport(BaseModel):
-    """`metrics.json` in a model bundle: challenger, baseline and champion on the same test rows."""
-
-    snapshot_id: str
-    spec_hash: str
-    git_sha: str
-    trained_at: datetime
-    train_start: date
-    train_end: date
-    test_rows: int
-    challenger_valid: SplitReport
-    challenger_test: SplitReport
-    baseline_test: SplitReport
-    champion_version: str | None = None
-    champion_test: SplitReport | None = None
-
-    @model_validator(mode="after")
-    def _champion_pair(self) -> "TrainingReport":
-        if (self.champion_version is None) != (self.champion_test is None):
-            raise ValueError("champion_version and champion_test come together")
-        return self
 
 
 def calibration_bins(y_true: ArrayLike, y_prob: ArrayLike, bins: int) -> list[CalibrationBin]:

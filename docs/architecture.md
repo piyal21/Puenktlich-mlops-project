@@ -125,7 +125,7 @@ s3://puenktlich-data-<acct>/                (private, SSE-S3, versioning off, li
 ├── bronze/timetables/kind=plan/date=YYYY-MM-DD/run=<ISO-ts>.jsonl.gz     # expire after 30 days
 ├── bronze/timetables/kind=fchg/date=YYYY-MM-DD/run=<ISO-ts>.jsonl.gz     # expire after 30 days
 ├── live/plans/latest.json.gz                                             # overwritten hourly
-├── live/boards/latest.json.gz                                            # overwritten every 15 min
+├── live/boards/latest.json.gz                                            # overwritten every 15 min (contract: §7)
 ├── silver/departures/source=live/date=YYYY-MM-DD/part-0.parquet          # kept
 └── control/
     ├── retrain_requested.json                                            # written by monitor
@@ -256,7 +256,7 @@ flowchart TD
   K --> L["smoke_test<br/>public API serves new version"]
 ```
 
-Phase 4 (local): `sync_live_silver` is skipped until Phase 7 (no live data yet), and `smoke_test` loads the released bundle through the checksum-verifying loader and reproduces the evaluated test predictions (the API check joins in Phase 5). Steps share one MLflow run: bundle files go to the run's `bundle/` folder, XCom carries only `snapshot_id`, `run_id` and `version`. `make train` runs the same steps in one process.
+Phase 4 (local): `sync_live_silver` is skipped until Phase 7 (no live data yet), and `smoke_test` loads the released bundle through the checksum-verifying loader and reproduces the evaluated test predictions (Phase 5 kept it artifact-only: the API is its own service, and its integration test serves the real champion). Steps share one MLflow run: bundle files go to the run's `bundle/` folder, XCom carries only `snapshot_id`, `run_id` and `version`. `make train` runs the same steps in one process.
 
 ### 5.3 Split and evaluation
 - Window: last `training.window_months` (default 9) of silver.
@@ -360,6 +360,12 @@ Locally (Phase 4) the bundle lives in the models bucket (`puenktlich-local`) and
   ] }
 ```
 
+Phase 5 additions (additive, owner-approved 2026-10-04): the board response also carries
+`"data_source": "sample" | "live"` and `"replayed_from": "2026-08-24" | null`, and each `prediction` carries
+`top_factors` (same shape as in `/predict`). Cancelled departures and every row while no champion is available get
+`"prediction": null`; `model_version` is then `null`. Times use the Europe/Berlin offset. `stale` = board older
+than 20 min.
+
 Errors → `application/problem+json`:
 ```json
 { "type": "/errors/station-not-supported", "title": "Station not supported", "status": 404,
@@ -368,6 +374,30 @@ Errors → `application/problem+json`:
 ```
 
 Other endpoints: `GET /api/v1/health`, `GET /api/v1/stations?q=`, `GET /api/v1/model`. OpenAPI at `/api/docs`.
+
+Problem `type`s: `/errors/station-not-supported` (404), `/errors/validation` (422), `/errors/length-required` (411),
+`/errors/payload-too-large` (413, body > 4 KB), `/errors/model-unavailable` (503), `/errors/board-unavailable`
+(503), `/errors/http` (other HTTP errors), `/errors/internal` (500, no stack trace). Every response carries
+`X-Request-ID` (a safe incoming one, `[A-Za-z0-9-]{1,64}`, is reused). CORS only for `CORS_ORIGINS` (local dev).
+
+### Live board file (`live/boards/latest.json.gz`, schema version 1)
+
+Gzipped JSON validated by `dbdelay.serving.board.LiveBoard` (`extra="forbid"`): `schema_version` (1),
+`generated_at` (UTC, becomes `data_as_of`), `source` (`sample` from `make seed`, `live` from Phase 7 ingestion),
+`replayed_from` (date or null), `departures` = silver-shaped rows (`event_id`, `eva`, `station_name`, `ride_id`,
+`stop_index` ≥ 1, `train_type`, `train_number`?, `line_number`?, `final_destination`?, `planned_departure_utc`,
+`changed_departure_utc`?, `delay_min`?, `is_cancelled`, `platform`?). Naive times are rejected. A missing or invalid
+board → 503 `/errors/board-unavailable`; after a good read, a failed refresh keeps serving the cached board.
+
+`make seed` (Phase 5) replays a real silver day with today's weekday onto today (Berlin wall-clock kept, so DST is
+handled), window now − 30 min … now + 6 h, `platform` null (silver has none).
+
+### Local serving (Phase 5)
+
+The pointer is `models/_pointer.json` (MinIO) until Phase 6 moves it to SSM. `ModelProvider` re-reads it every
+5 min; integrity errors fail closed (no forecasts), a storage outage keeps the last good bundle. The API image
+(`services/api/Dockerfile`) has two targets: `lambda` (Lambda base image + Mangum) and `local` (+ uvicorn, compose
+profile `app`). The serving import path never loads scikit-learn (guard test).
 
 ---
 
@@ -499,6 +529,8 @@ infra/
 | `MODEL_POINTER_PARAM` | local file `.local/champion_version` | `/puenktlich/prod/model/champion_version` |
 | `DB_API_CLIENT_ID` / `DB_API_KEY` | `.env` (git-ignored) | SSM SecureString |
 | `MLFLOW_TRACKING_URI` | `http://mlflow:5000` | — |
+| `BOARD_KEY` | `live/boards/latest.json.gz` | same |
+| `CORS_ORIGINS` | `["http://localhost:5173"]` (compose `api`) | *(empty: same origin)* |
 
 Configuration is loaded via `pydantic-settings` in `src/dbdelay/config.py`. YAML configs in `configs/` hold non-secret tunables (stations, training, monitoring).
 
@@ -537,15 +569,16 @@ puenktlich/
 │   ├── timetables/  client.py  parser.py  ratelimit.py
 │   ├── data/  schemas.py  hf_backfill.py  silver.py  quality.py
 │   ├── features/  build.py  spec.py  calendar.py
-│   ├── training/  split.py  baseline.py  train.py  calibrate.py  evaluate.py  gate.py
+│   ├── training/  split.py  baseline.py  train.py  calibrate.py  evaluate.py  report.py  gate.py
 │   ├── registry/  artifacts.py  release.py  pointer.py
-│   ├── serving/  model_loader.py  board.py  explain.py
+│   ├── serving/  model_loader.py  board.py  scoring.py  explain.py  stations.py  seed.py
 │   └── monitoring/  drift.py  performance.py  publish.py  triggers.py
 ├── services/
 │   ├── api/
 │   │   ├── app/  main.py  routers/  schemas.py  deps.py  errors.py
 │   │   ├── lambda_handler.py       # Mangum
-│   │   └── Dockerfile
+│   │   ├── requirements*.txt       # hash-pinned, `make api-requirements`
+│   │   └── Dockerfile              # targets `lambda` and `local`
 │   └── jobs/
 │       ├── handlers/  ingest.py  etl_daily.py  monitor.py
 │       └── Dockerfile

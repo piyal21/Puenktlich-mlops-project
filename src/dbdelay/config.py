@@ -8,7 +8,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr, ValidationError
+from pydantic import Field, SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from dbdelay.errors import ConfigError
@@ -42,6 +42,14 @@ class Settings(BaseSettings):
 
     # Model pointer: local file path, or SSM parameter name in prod.
     model_pointer_param: str = ".local/champion_version"
+
+    # Serving (Phase 5): live board object, cache TTLs, dev-only CORS origins.
+    board_key: str = "live/boards/latest.json.gz"
+    board_ttl_s: float = Field(default=60, gt=0)
+    board_stale_after_s: int = Field(default=1200, gt=0)
+    model_pointer_ttl_s: float = Field(default=300, gt=0)
+    # JSON list, e.g. CORS_ORIGINS='["http://localhost:5173"]'; empty in prod (same origin).
+    cors_origins: list[str] = []
 
     # DB Timetables API credentials (only needed by ingestion).
     db_api_client_id: SecretStr | None = None

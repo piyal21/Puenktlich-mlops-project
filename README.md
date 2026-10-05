@@ -386,6 +386,8 @@ History backfill (Phase 2): `make airflow-env` (once) → `make airflow-up` → 
 
 Training snapshot + baseline (Phase 3): `make baseline` builds `gold/training_sets/<id>/` from the backfilled silver and writes the baseline metrics next to it.
 
+Serving & UI (Phase 5): `make up` → `make seed` (sample live board: a real silver day replayed onto today) → `make app-up` (API on :8000, web app on :5173, compose profile `app`). `make api-dev` runs the API on the host with reload; `make web-check` lints, type-checks and tests the frontend (`npm --prefix frontend ci` once). Without a champion the board still shows departures with "No forecast".
+
 Training (Phase 4): `make train` runs snapshot → LightGBM → calibration → evaluation → MLflow registry → gate → release in one process; `make train-dag` triggers the same steps as the Airflow DAG `training_pipeline`. A promoted model lands in MinIO `models/<version>/` (SHA-256 manifest) and `models/_pointer.json`; `make rollback` swaps the champion back to the previous version.
 
 ---

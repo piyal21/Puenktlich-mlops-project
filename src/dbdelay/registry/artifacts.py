@@ -21,7 +21,7 @@ from dbdelay.features.build import build_features
 from dbdelay.features.spec import FeatureSpec
 from dbdelay.storage import ObjectStore
 from dbdelay.training.calibrate import IsotonicCalibrator
-from dbdelay.training.evaluate import TrainingReport
+from dbdelay.training.report import TrainingReport
 from dbdelay.training.train import booster_from_text, predict_raw
 
 MANIFEST_FILE = "manifest.json"
@@ -161,6 +161,7 @@ class ModelBundle:
     booster: lgb.Booster
     calibrator: IsotonicCalibrator
     spec: FeatureSpec
+    report: TrainingReport
 
     def predict(self, df: pd.DataFrame) -> NDArray[np.float64]:
         """Calibrated ``p_late`` for silver-shaped rows (features built with this bundle's spec)."""
@@ -179,8 +180,9 @@ def parse_bundle(manifest: Manifest, files: Mapping[str, bytes]) -> ModelBundle:
             booster=booster_from_text(files["model.txt"].decode("utf-8")),
             calibrator=IsotonicCalibrator.from_json(files["calibrator.json"]),
             spec=FeatureSpec.from_json(files["feature_spec.json"]),
+            report=TrainingReport.model_validate_json(files["metrics.json"]),
         )
-    except (LightGBMError, DataValidationError, UnicodeDecodeError) as exc:
+    except (LightGBMError, DataValidationError, UnicodeDecodeError, ValidationError) as exc:
         raise ArtifactIntegrityError(
             f"models/{manifest.version}: cannot parse bundle files"
         ) from exc

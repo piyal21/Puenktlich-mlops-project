@@ -59,7 +59,8 @@ def test_digest_is_cut_to_mlflow_limit() -> None:
 def test_tracker_sets_client_env_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     # Presigned URLs from the server point at the in-cluster MinIO host (minio:9000), which is
     # not reachable from the developer machine -> transfers go through the proxy. MLflow's
-    # emoji "View run" print crashes cp1252 consoles on Windows -> suppressed.
+    # emoji "View run" print crashes cp1252 consoles on Windows -> suppressed. Telemetry is
+    # off by owner decision (2026-10-05).
     for name in CLIENT_ENV_DEFAULTS:
         monkeypatch.delenv(name, raising=False)
     MlflowTracker("http://127.0.0.1:9")
@@ -67,6 +68,7 @@ def test_tracker_sets_client_env_defaults(monkeypatch: pytest.MonkeyPatch) -> No
         "MLFLOW_ENABLE_PROXY_MULTIPART_DOWNLOAD": "false",
         "MLFLOW_ENABLE_PROXY_MULTIPART_UPLOAD": "false",
         "MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT": "true",
+        "MLFLOW_DISABLE_TELEMETRY": "true",
     }
 
 

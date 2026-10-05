@@ -3,6 +3,74 @@
 One entry per phase branch (owner rule, from Phase 2 on). Phases 0–1 are described in [`Phases/`](Phases/).
 Only measured numbers; anything not measured is `TBD`.
 
+## Phase 5 — Local serving & UI (`phase-5/serving-ui`)
+
+**Built**
+- `dbdelay.serving`: `model_loader` (`ModelProvider`: pointer re-read every 5 min, bundles via the checksum loader,
+  one load per version, integrity errors fail closed, storage blips keep the current model and retry after 15 s),
+  `board` (`live/boards/latest.json.gz` contract v1, 60 s cache that keeps the last good board, station/window
+  selection), `scoring` (risk level, board + single scoring, one JSON prediction log line per departure),
+  `explain` (top-3 LightGBM contributions → plain sentences), `stations` (case/accent/umlaut-spelling search),
+  `seed` (`make seed`: a real silver day with today's weekday replayed onto today, DST-safe).
+- `dbdelay.training.report` (report models moved out of `evaluate`; the calibrator imports scikit-learn only to fit),
+  so the serving import path never loads scikit-learn (guard test).
+- `services/api`: FastAPI `create_app(deps)` with routes health / stations / departures / predict / model, OpenAPI at
+  `/api/docs`, problem+json errors, `X-Request-ID`, 4 KB body limit, dev-only CORS; Mangum `lambda_handler`;
+  Dockerfile with `local` (uvicorn) and default `lambda` targets; hash-pinned requirements (`make api-requirements`).
+- `frontend/`: React 19 + Vite + TS strict + Tailwind v4 (design.md tokens), TanStack Query, React Router: board
+  (combobox search, recent stations, 1/3/6 h, loading/empty/error/stale/no-model states, sample-data banner),
+  detail sheet (probability bar with 20/45 % marks, reasons, focus trap, scroll lock), health (real champion test
+  metrics), about; light/dark theme.
+- Compose profile `app` (`api` :8000, `frontend` Node 24 + Vite :5173 proxying `/api`); `make app-up`,
+  `app-down`, `api-dev`, `web-check`, `seed`. MLflow telemetry off (client default, server, Airflow, make).
+
+**Key decisions**
+- Owner: sample board from a real silver day; slim serving path without scikit-learn; compose profile with a Node
+  container; health page shows only real metrics (charts wait for Phase 9); additive API fields `top_factors`,
+  `data_source`, `replayed_from`; new board file contract; deps `fastapi`, `mangum` (extra `api`), `uvicorn`
+  (group `api-local`), `httpx` (dev) + the npm list in the spec; MLflow telemetry off.
+- Cancelled departures get `prediction: null`; no champion → board still served, `/predict` and `/model` 503.
+- API times use the Berlin offset; `/predict` accepts years 2000–2099 only (422 otherwise).
+- Light `--risk-low` darkened `#12805C` → `#117B58` (4.3:1 → 4.6:1 on its badge, WCAG AA); design.md updated.
+- On phones the risk badge sits under the destination (long names were cut off at 360 px).
+
+**Tested**
+- `make check`: ruff + mypy strict (incl. `services/api`) clean, **402 passed**, coverage **97 %**.
+- `make web-check`: ESLint + Prettier + `tsc` clean, **47 passed** (incl. token contrast test, 9 pairs × 2 themes).
+- `make test-integration`: **8 passed** (71 s), incl. seed + API serving the real champion v1 from MinIO. One run
+  failed with `RequestTimeTooSkewed` after the PC slept (Docker clock drift); re-run green.
+- `make test-dags`: DAG check passed. `uv run pre-commit run --all-files`: clean. `npm audit --omit=dev`: 0.
+- Real `make seed`: 3,376 departures at 30 stations, replayed from 2026-08-24.
+- Lambda image in the runtime emulator: `statusCode` 200. Compose `api`: champion v1 loaded, e.g. NJ 402 →
+  39.6 % Medium with 3 reasons. Image size 1.58 GB.
+- No champion (API on an empty models bucket): board `model_version: null`, `/model` 503 problem+json.
+- Headless Chromium at 360 / 390 / 1280 px: board, detail sheet (focus on Close, 3 reasons), health, about render.
+- Accessibility audit (`design:accessibility-review`): 1 Major (Low badge contrast) fixed; design critique: no
+  critical issues.
+- Final whole-branch review (independent, opus): 0 Critical, 2 Important + 2 re-graded to Important (model dropped on
+  a storage blip, `/predict` 500 on far dates, stale detail after Back, Dockerfile default target), all fixed
+  test-first; remaining minors deferred below.
+
+**Known gaps / open items**
+- Sample data only until Phase 7; silver has no platform ("Platform not known yet"). Month Sep–Nov unseen in train.
+- API image 1.58 GB (pandas, PyArrow, DuckDB, LightGBM + SciPy). Unit suite takes ≈ 4 min on this PC.
+- Starlette's test client warns it wants `httpx2` (not added: new dependency).
+- Phase 6 checks: API Gateway → Mangum must send `Content-Length` on POST (else 411); booster use from uvicorn's
+  thread pool is untested under concurrency (Lambda serves one request at a time).
+- Deferred review minors: search input that normalises to empty returns all stations; unknown station URL shows a
+  generic error with a useless retry; Enter can pick a station from the previous query while searching; seed drops
+  the ambiguous/nonexistent DST hour; `/health` and `/model` times are UTC; reason text for an OTHER-bucket
+  station/line/destination; 411/413 lack CORS headers; problem handler drops HTTP headers (405 `Allow`);
+  `train_type.upper()` lives in the predict router.
+- Deferred a11y/design notes: card borders and probability-bar track below 3:1 (non-text; value also in text); page
+  title not per route; no focus move on route change; theme button names the state; home could suggest popular
+  stations; coupled trains look like duplicates.
+
+**Docs touched**
+- `docs/architecture.md` (§3.2, §5.2 note, §7 contract additions, board file, local serving, §13 settings, §14
+  layout), `docs/design.md` (risk-low token), `docs/phases.md` (Phase 5 ticked), `README.md`, `CLAUDE.md`,
+  `Phases/phase-5-serving-ui.md`, `Phases/README.md`, spec + plan under `docs/superpowers/`, this file.
+
 ## Phase 4 — Training, tracking, registry, gate (`phase-4/training`)
 
 **Built**
@@ -56,7 +124,7 @@ Only measured numbers; anything not measured is `TBD`.
 - `month` Sep–Nov unseen in train. Killed Airflow tasks leave their MLflow run RUNNING (Python errors mark it FAILED).
 - PC standby kills Airflow tasks (task token expires) — keep the PC awake during DAG runs.
 - First `make train-dag` unpauses the DAG, which also starts the latest `@monthly` run.
-- MLflow client telemetry is on by default (`MLFLOW_DISABLE_TELEMETRY`) — owner decision pending.
+- MLflow client telemetry was on by default (`MLFLOW_DISABLE_TELEMETRY`); turned off in Phase 5 (owner).
 - Deferred review minors: LightGBM param aliases (e.g. `n_estimators`) not rejected in `lightgbm.params`; rollback
   re-run after an alias failure swaps again; no pointer lock (one trainer at a time); `is_late` cast before silver
   validation drops the dtype check; failed smoke test leaves the pointer on that version (run `make rollback`); an

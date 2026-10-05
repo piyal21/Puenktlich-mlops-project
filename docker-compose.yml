@@ -1,4 +1,5 @@
-# Local training plane (docs/architecture.md §1). Core services + Airflow (profile "airflow").
+# Local training plane (docs/architecture.md §1). Core services + Airflow (profile "airflow")
+# + API and web app (profile "app", Phase 5).
 # Data lives in named volumes (fast on Docker Desktop for Windows; no slow bind mounts).
 # All ports bind to 127.0.0.1 → not reachable from your network.
 name: puenktlich
@@ -38,6 +39,7 @@ x-airflow-env: &airflow-env
   TRAINING_CONFIG_FILE: /opt/airflow/configs/training.yaml
   MODELS_BUCKET: ${MODELS_BUCKET:-puenktlich-local}
   MLFLOW_TRACKING_URI: http://mlflow:5000
+  MLFLOW_DISABLE_TELEMETRY: "true"   # owner decision 2026-10-05
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
 services:
@@ -110,6 +112,7 @@ services:
       # MLflow 3 rejects Host headers other than localhost (DNS-rebinding guard); Airflow tasks
       # call it as mlflow:5000 on the compose network. Replaces the defaults, so localhost stays.
       MLFLOW_SERVER_ALLOWED_HOSTS: localhost,localhost:5000,127.0.0.1,127.0.0.1:5000,mlflow,mlflow:5000
+      MLFLOW_DISABLE_TELEMETRY: "true"   # owner decision 2026-10-05
     command:
       - mlflow server --host 0.0.0.0 --port 5000
         --backend-store-uri "$$MLFLOW_BACKEND_STORE_URI"
@@ -192,7 +195,62 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # ---------------- App (Phase 5) — `make app-up` (profile "app") ----------------
+  api:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+      target: local
+    image: puenktlich/api:local
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      APP_ENV: local
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      STORAGE_ENDPOINT_URL: http://minio:9000
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY}
+      DATA_BUCKET: ${DATA_BUCKET:-puenktlich-local}
+      MODELS_BUCKET: ${MODELS_BUCKET:-puenktlich-local}
+      CORS_ORIGINS: '["http://localhost:5173"]'
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+  frontend:
+    profiles: ["app"]
+    image: node:24.21.0-alpine
+    working_dir: /app
+    command: ["sh", "-c", "npm ci && npm run dev -- --host 0.0.0.0"]
+    environment:
+      VITE_API_PROXY: http://api:8000
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules   # Linux binaries stay out of the Windows tree
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5173/"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    restart: unless-stopped
+
 volumes:
   minio-data:
   postgres-data:
   airflow-logs:
+  frontend-node-modules:

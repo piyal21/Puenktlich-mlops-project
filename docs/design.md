@@ -35,7 +35,7 @@
 | `--accent` | `#F5B700` | "Platform yellow" — tiny highlights only (live dot, logo mark). Never for text on white. |
 | `--accent-soft` | `#FFF4CC` | Stale-data banner background (text: `--accent-ink`) |
 | `--accent-ink` | `#5C4400` | Text on `--accent-soft` |
-| `--risk-low` | `#12805C` | Low risk text/icon (4.9:1 on white) |
+| `--risk-low` | `#117B58` | Low risk text/icon (5.3:1 on white, 4.6:1 on `--risk-low-soft`; was `#12805C` = 4.3:1 on the badge, failed AA — Phase 5 audit) |
 | `--risk-low-soft` | `#E3F4EC` | Low risk badge background |
 | `--risk-medium` | `#9A5B00` | Medium risk text/icon (5.4:1 on white) |
 | `--risk-medium-soft` | `#FDF0DC` | Medium risk badge background |
@@ -215,7 +215,7 @@ Footer (every page, Caption, muted):
   --text:#0E1726; --text-muted:#5B6472;
   --primary:#2F5BEA; --primary-hover:#2449C4; --primary-fg:#FFFFFF; --primary-soft:#E8EEFF;
   --accent:#F5B700; --accent-soft:#FFF4CC; --accent-ink:#5C4400;
-  --risk-low:#12805C; --risk-low-soft:#E3F4EC;
+  --risk-low:#117B58; --risk-low-soft:#E3F4EC;
   --risk-medium:#9A5B00; --risk-medium-soft:#FDF0DC;
   --risk-high:#C2362F; --risk-high-soft:#FBE5E3;
   --cancelled:#5B6472; --cancelled-soft:#ECEEF1;

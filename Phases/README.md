@@ -11,4 +11,5 @@ what actually happened.
 | 1 | Data discovery & contracts — EDA, station list, silver schema, label policy | ✅ merged (`867636a`) | [phase-1-data-discovery.md](phase-1-data-discovery.md) |
 | 2 | Historical ETL with Airflow — HF backfill to bronze/silver, quarantine, quality reports | ✅ merged (`b8fac56`) | [phase-2-hf-backfill.md](phase-2-hf-backfill.md) |
 | 3 | Features & baseline — feature builder, gold snapshot, late-rate baseline + metrics | ✅ merged (`584f263`) | [phase-3-features-baseline.md](phase-3-features-baseline.md) |
-| 4 | Training, tracking, registry, gate — LightGBM + calibration, MLflow registry, promotion gate, release/rollback, Airflow DAG | ✅ done | [phase-4-training.md](phase-4-training.md) |
+| 4 | Training, tracking, registry, gate — LightGBM + calibration, MLflow registry, promotion gate, release/rollback, Airflow DAG | ✅ merged (`d9ea889`) | [phase-4-training.md](phase-4-training.md) |
+| 5 | Local serving & UI — champion loader, FastAPI, sample board, Lambda/local image, React app | ✅ done | [phase-5-serving-ui.md](phase-5-serving-ui.md) |
