@@ -116,7 +116,7 @@ module "sample_board" {
   name        = "sample-board"
   image_uri   = local.image_uri
   command     = ["seed_handler.handler"]
-  memory_mb   = 1024
+  memory_mb   = 512 # account quota: max 512 MB
   timeout_s   = 60
   policy_json = data.aws_iam_policy_document.sample_board.json
   environment = {

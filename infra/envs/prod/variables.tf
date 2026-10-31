@@ -17,9 +17,9 @@ variable "api_image_tag" {
 }
 
 variable "api_memory_mb" {
-  description = "API Lambda memory; raise if the measured cold start is too slow."
+  description = "API Lambda memory. This account caps Lambda at 512 MB (new-account quota)."
   type        = number
-  default     = 1024
+  default     = 512
 }
 
 variable "api_timeout_s" {
