@@ -36,7 +36,7 @@ aws-py-profile: export AWS_PROFILE := $(AWS_PROFILE)
 # keep the 12 h ECR login in its own Docker config folder (outside the repo) for login + push only;
 # the build uses the normal config (it has buildx). config.json is seeded with the registry entry,
 # otherwise Docker falls back to the Windows store again.
-DOCKER_ECR_CONFIG := $(or $(HOME),$(USERPROFILE))/.docker-puenktlich-ecr
+DOCKER_ECR_CONFIG := $(subst \,/,$(or $(HOME),$(USERPROFILE)))/.docker-puenktlich-ecr
 # Fail fast with one clear line when the 12 h `aws login` session is gone.
 $(AWS_TARGETS): aws-check
 
