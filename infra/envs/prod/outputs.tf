@@ -21,3 +21,27 @@ output "pointer_param_previous" {
 output "alerts_topic_arn" {
   value = module.observability.topic_arn
 }
+
+output "web_bucket" {
+  value = module.web_cdn.web_bucket
+}
+
+output "cloudfront_domain" {
+  value = module.web_cdn.domain_name
+}
+
+output "cloudfront_distribution_id" {
+  value = module.web_cdn.distribution_id
+}
+
+output "api_endpoint" {
+  value = module.http_api.api_endpoint
+}
+
+output "api_function_name" {
+  value = module.api.function_name
+}
+
+output "sample_board_function_name" {
+  value = module.sample_board.function_name
+}

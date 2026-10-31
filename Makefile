@@ -145,7 +145,7 @@ tf-bootstrap-apply: ## Apply the saved bootstrap plan and write envs/prod/backen
 
 # envs/prod. Needs backend.hcl (from tf-bootstrap-apply) and TF_VAR_alert_email or a
 # git-ignored terraform.auto.tfvars. Plans are saved and applied exactly as reviewed.
-STAGE_A := -target=module.data_lake -target=module.ecr -target=module.ssm -target=module.budget -target=module.observability
+STAGE_A := -target=module.data_lake -target=module.ecr -target=module.ssm -target=module.budget -target=module.observability.aws_sns_topic.alerts -target=module.observability.aws_sns_topic_subscription.email
 
 tf-init: ## Initialise envs/prod against the remote state bucket
 	terraform -chdir=$(TF_PROD) init -input=false -reconfigure -backend-config=backend.hcl
