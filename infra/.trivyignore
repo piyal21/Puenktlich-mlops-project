@@ -1,0 +1,11 @@
+# Accepted Trivy findings, each with its reason (docs/adr/0002-aws-account-type.md).
+
+# AVD-AWS-0132 (HIGH): S3 without a customer-managed KMS key.
+# All buckets use SSE-S3 (architecture §12). A KMS key costs ~$1/month on its own, which is
+# the whole monthly budget; the data is public timetable data, model files and the website.
+AVD-AWS-0132
+
+# AVD-AWS-0089 (LOW): S3 access logging disabled.
+# Server access logs need a second bucket and add storage/request cost; CloudTrail management
+# events cover who changed what. Revisit in Phase 10 (hardening).
+AVD-AWS-0089

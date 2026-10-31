@@ -12,13 +12,16 @@ export MLFLOW_DISABLE_TELEMETRY := true
 # so unit tests never see a real profile. Terraform outputs are read lazily (=, not :=).
 AWS_PROFILE ?= puenktlich
 AWS_REGION ?= eu-north-1
+TF_BOOT := infra/bootstrap
 TF_PROD := infra/envs/prod
 tf_out = $(shell terraform -chdir=$(TF_PROD) output -raw $(1))
-AWS_TARGETS := publish-model rollback-prod upload-sample-days
+# Pinned by digest (0.64.1); runs from Docker, nothing to install.
+TRIVY_IMAGE := aquasec/trivy@sha256:a8ca29078522f30393bdb34225e4c0994d38f37083be81a42da3a2a7e1488e9e
+AWS_TARGETS := publish-model rollback-prod upload-sample-days tf-bootstrap-plan tf-bootstrap-apply
 $(AWS_TARGETS): export AWS_PROFILE := $(AWS_PROFILE)
 $(AWS_TARGETS): export AWS_REGION := $(AWS_REGION)
 
-.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days
+.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan tf-bootstrap-plan tf-bootstrap-apply
 
 help: ## Show available targets
 	@uv run python -c "import re; [print(f'{m[0]:<18} {m[1]}') for m in re.findall(r'^([a-z-]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -117,3 +120,23 @@ web-check: ## Frontend lint, typecheck and component tests (needs `npm --prefix 
 	npm --prefix frontend run lint
 	npm --prefix frontend run typecheck
 	npm --prefix frontend test
+
+# --- Infrastructure (Phase 6). Every apply is an AWS write: owner OK first. -------------------
+
+tf-fmt: ## Check Terraform formatting (all of infra/)
+	terraform fmt -check -recursive infra
+
+tf-validate: ## Validate every Terraform root without touching state or AWS
+	terraform -chdir=$(TF_BOOT) init -backend=false -input=false -no-color
+	terraform -chdir=$(TF_BOOT) validate -no-color
+
+tf-scan: ## Trivy misconfiguration scan of infra/ (Docker image, pinned)
+	docker run --rm -v "$(CURDIR)/infra:/infra" $(TRIVY_IMAGE) config --exit-code 1 --ignorefile /infra/.trivyignore /infra
+
+tf-bootstrap-plan: ## Plan the Terraform state bucket (read-only); saves bootstrap.tfplan
+	terraform -chdir=$(TF_BOOT) init -input=false
+	terraform -chdir=$(TF_BOOT) plan -input=false -out=bootstrap.tfplan
+
+tf-bootstrap-apply: ## Apply the saved bootstrap plan and write envs/prod/backend.hcl (AWS write: owner OK)
+	terraform -chdir=$(TF_BOOT) apply -input=false bootstrap.tfplan
+	terraform -chdir=$(TF_BOOT) output -raw backend_hcl > $(TF_PROD)/backend.hcl
