@@ -128,3 +128,43 @@ def test_publish_main_expired_login_is_one_line(
     monkeypatch.setattr(publish, "publish_champion", expired)
     assert publish_main(["--models-bucket", "prod-models"]) == 1
     assert capsys.readouterr().err == LOGIN_HINT + "\n"
+
+
+def test_publish_main_refusal_is_one_line(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def no_champion(*_: object, **__: object) -> None:
+        raise ModelNotAvailableError("no local champion")
+
+    monkeypatch.setattr(publish, "publish_champion", no_champion)
+    assert publish_main(["--models-bucket", "prod-models"]) == 1
+    assert capsys.readouterr().err == "publish refused: no local champion\n"
+
+
+def test_rollback_prod_main_without_previous_is_refused(
+    env: Env, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(publish, "make_ssm_client", lambda _region: env.ssm)
+    monkeypatch.setattr(publish, "load_training_config", lambda _path: _Cfg())
+    assert publish.rollback_prod_main(["--models-bucket", "prod-models"]) == 1
+    assert capsys.readouterr().err.startswith("rollback refused: no previous model version")
+
+
+def test_rollback_prod_main_swaps(
+    env: Env,
+    bundle_files: dict[str, bytes],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    for version in ("1", "2"):
+        _local_release(env, bundle_files, version)
+        _publish(env)
+    monkeypatch.setattr(publish, "make_ssm_client", lambda _region: env.ssm)
+    monkeypatch.setattr(publish, "load_training_config", lambda _path: _Cfg())
+    assert publish.rollback_prod_main(["--models-bucket", "prod-models"]) == 0
+    assert capsys.readouterr().out == "prod champion 1 (previous 2)\n"
+
+
+class _Cfg:
+    class registry:
+        model_name = "m"

@@ -4,8 +4,9 @@ import pytest
 
 from dbdelay.data.silver import silver_key
 from dbdelay.errors import NotFoundError
-from dbdelay.serving.samples import SAMPLE_DAYS, copy_silver_days
+from dbdelay.serving.samples import SAMPLE_DAYS, copy_silver_days, upload_main
 from dbdelay.storage import ObjectStore
+from tests.unit.conftest import TEST_BUCKET
 
 
 def _put_days(store: ObjectStore, days: tuple[date, ...]) -> None:
@@ -33,3 +34,21 @@ def test_copy_silver_days_missing_day_writes_nothing(s3_store: ObjectStore) -> N
     with pytest.raises(NotFoundError):
         copy_silver_days(s3_store, s3_store, SAMPLE_DAYS, "samples/")
     assert list(s3_store.iter_keys("samples/")) == []
+
+
+def test_upload_main_copies_days(
+    s3_store: ObjectStore, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("DATA_BUCKET", TEST_BUCKET)
+    _put_days(s3_store, SAMPLE_DAYS)
+    assert upload_main(["--data-bucket", TEST_BUCKET]) == 0
+    assert capsys.readouterr().out == "uploaded 9 sample days to samples/\n"
+    assert len(list(s3_store.iter_keys("samples/"))) == 9
+
+
+def test_upload_main_missing_day_is_refused(
+    s3_store: ObjectStore, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("DATA_BUCKET", TEST_BUCKET)
+    assert upload_main(["--data-bucket", TEST_BUCKET]) == 1
+    assert capsys.readouterr().err.startswith("upload refused:")
