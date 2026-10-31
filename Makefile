@@ -17,11 +17,11 @@ TF_PROD := infra/envs/prod
 tf_out = $(shell terraform -chdir=$(TF_PROD) output -raw $(1))
 # Pinned by digest (0.64.1); runs from Docker, nothing to install.
 TRIVY_IMAGE := aquasec/trivy@sha256:a8ca29078522f30393bdb34225e4c0994d38f37083be81a42da3a2a7e1488e9e
-AWS_TARGETS := publish-model rollback-prod upload-sample-days tf-bootstrap-plan tf-bootstrap-apply
+AWS_TARGETS := publish-model rollback-prod upload-sample-days tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply
 $(AWS_TARGETS): export AWS_PROFILE := $(AWS_PROFILE)
 $(AWS_TARGETS): export AWS_REGION := $(AWS_REGION)
 
-.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan tf-bootstrap-plan tf-bootstrap-apply
+.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply
 
 help: ## Show available targets
 	@uv run python -c "import re; [print(f'{m[0]:<18} {m[1]}') for m in re.findall(r'^([a-z-]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -129,6 +129,8 @@ tf-fmt: ## Check Terraform formatting (all of infra/)
 tf-validate: ## Validate every Terraform root without touching state or AWS
 	terraform -chdir=$(TF_BOOT) init -backend=false -input=false -no-color
 	terraform -chdir=$(TF_BOOT) validate -no-color
+	terraform -chdir=$(TF_PROD) init -backend=false -input=false -no-color
+	terraform -chdir=$(TF_PROD) validate -no-color
 
 tf-scan: ## Trivy misconfiguration scan of infra/ (Docker image, pinned)
 	docker run --rm -v "$(CURDIR)/infra:/infra" $(TRIVY_IMAGE) config --exit-code 1 --ignorefile /infra/.trivyignore /infra
@@ -140,3 +142,19 @@ tf-bootstrap-plan: ## Plan the Terraform state bucket (read-only); saves bootstr
 tf-bootstrap-apply: ## Apply the saved bootstrap plan and write envs/prod/backend.hcl (AWS write: owner OK)
 	terraform -chdir=$(TF_BOOT) apply -input=false bootstrap.tfplan
 	terraform -chdir=$(TF_BOOT) output -raw backend_hcl > $(TF_PROD)/backend.hcl
+
+# envs/prod. Needs backend.hcl (from tf-bootstrap-apply) and TF_VAR_alert_email or a
+# git-ignored terraform.auto.tfvars. Plans are saved and applied exactly as reviewed.
+STAGE_A := -target=module.data_lake -target=module.ecr -target=module.ssm -target=module.budget -target=module.observability
+
+tf-init: ## Initialise envs/prod against the remote state bucket
+	terraform -chdir=$(TF_PROD) init -input=false -reconfigure -backend-config=backend.hcl
+
+tf-plan-stage-a: ## Plan stage A only (buckets, ECR, SSM, budget import, alert topic); saves prod.tfplan
+	terraform -chdir=$(TF_PROD) plan -input=false $(STAGE_A) -out=prod.tfplan
+
+tf-plan: ## Plan the whole prod stack (read-only); saves prod.tfplan
+	terraform -chdir=$(TF_PROD) plan -input=false -out=prod.tfplan
+
+tf-apply: ## Apply the saved prod.tfplan (AWS write: owner OK)
+	terraform -chdir=$(TF_PROD) apply -input=false prod.tfplan
