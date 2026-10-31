@@ -27,6 +27,14 @@ BOTO_CONFIG = Config(
 _MISSING_KEY_CODES = frozenset({"NoSuchKey", "404", "NotFound"})
 
 
+def make_aws_s3_client(region: str) -> "S3Client":
+    """S3 client for real AWS (never MinIO), e.g. a laptop CLI that writes to prod.
+
+    Credentials come from the default chain (``AWS_PROFILE`` / `aws login`).
+    """
+    return boto3.client("s3", region_name=region, config=BOTO_CONFIG)
+
+
 def make_s3_client(settings: Settings | None = None) -> "S3Client":
     """Build an S3 client for AWS or, if an endpoint is configured, for MinIO.
 

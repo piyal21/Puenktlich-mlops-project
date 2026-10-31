@@ -3,6 +3,7 @@
 import argparse
 import sys
 from collections.abc import Mapping, Sequence
+from typing import Protocol
 
 from dbdelay.config import get_settings
 from dbdelay.errors import ArtifactIntegrityError, DbDelayError, ModelNotAvailableError
@@ -23,10 +24,16 @@ CHAMPION = "champion"
 CHALLENGER = "challenger"
 
 
+class AliasTracker(Protocol):
+    """The one tracker call a release needs (`Tracker` satisfies it)."""
+
+    def set_alias(self, model_name: str, alias: str, version: str) -> None: ...
+
+
 def release_version(  # noqa: PLR0913 - store, pointer, tracker + bundle + root
     store: ObjectStore,
     pointer: ModelPointer,
-    tracker: Tracker,
+    tracker: AliasTracker,
     *,
     manifest: Manifest,
     files: Mapping[str, bytes],
@@ -60,7 +67,7 @@ def release_version(  # noqa: PLR0913 - store, pointer, tracker + bundle + root
 def rollback(
     store: ObjectStore,
     pointer: ModelPointer,
-    tracker: Tracker,
+    tracker: AliasTracker,
     *,
     model_name: str,
     root: str = "",

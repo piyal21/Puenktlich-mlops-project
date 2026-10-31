@@ -8,7 +8,17 @@ export GIT_SHA := $(shell git rev-parse --short HEAD)
 # Owner decision 2026-10-05: MLflow usage telemetry off for every make recipe (train, rollback).
 export MLFLOW_DISABLE_TELEMETRY := true
 
-.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed app-up app-down api-dev api-requirements web-check
+# AWS (Phase 6): laptop deploys use the `aws login` profile. Exported only for AWS targets,
+# so unit tests never see a real profile. Terraform outputs are read lazily (=, not :=).
+AWS_PROFILE ?= puenktlich
+AWS_REGION ?= eu-north-1
+TF_PROD := infra/envs/prod
+tf_out = $(shell terraform -chdir=$(TF_PROD) output -raw $(1))
+AWS_TARGETS := publish-model rollback-prod
+$(AWS_TARGETS): export AWS_PROFILE := $(AWS_PROFILE)
+$(AWS_TARGETS): export AWS_REGION := $(AWS_REGION)
+
+.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed app-up app-down api-dev api-requirements web-check publish-model rollback-prod
 
 help: ## Show available targets
 	@uv run python -c "import re; [print(f'{m[0]:<18} {m[1]}') for m in re.findall(r'^([a-z-]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -73,6 +83,12 @@ train: ## Train, evaluate, gate and (if it passes) release a model; same steps a
 
 rollback: ## Point the champion back at the previous model version (pointer + MLflow alias)
 	uv run python scripts/rollback.py
+
+publish-model: ## Copy the local champion to AWS and point SSM at it (AWS write: owner OK)
+	uv run python scripts/publish_model.py --models-bucket $(call tf_out,models_bucket) --region $(AWS_REGION)
+
+rollback-prod: ## Swap the prod (SSM) champion back to the previous version (AWS write: owner OK)
+	uv run python scripts/rollback_prod.py --models-bucket $(call tf_out,models_bucket) --region $(AWS_REGION)
 
 train-dag: ## Unpause and trigger training_pipeline in Airflow (Phase 4)
 	$(COMPOSE) --profile airflow exec airflow-scheduler airflow dags unpause training_pipeline
