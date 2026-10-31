@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     board_ttl_s: float = Field(default=60, gt=0)
     board_stale_after_s: int = Field(default=1200, gt=0)
     model_pointer_ttl_s: float = Field(default=300, gt=0)
+    # Phase 6: silver days the cloud sample board replays (prefix in the data bucket).
+    sample_silver_root: str = "samples/"
     # JSON list, e.g. CORS_ORIGINS='["http://localhost:5173"]'; empty in prod (same origin).
     cors_origins: list[str] = []
 

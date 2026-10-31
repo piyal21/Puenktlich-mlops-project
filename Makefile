@@ -14,11 +14,11 @@ AWS_PROFILE ?= puenktlich
 AWS_REGION ?= eu-north-1
 TF_PROD := infra/envs/prod
 tf_out = $(shell terraform -chdir=$(TF_PROD) output -raw $(1))
-AWS_TARGETS := publish-model rollback-prod
+AWS_TARGETS := publish-model rollback-prod upload-sample-days
 $(AWS_TARGETS): export AWS_PROFILE := $(AWS_PROFILE)
 $(AWS_TARGETS): export AWS_REGION := $(AWS_REGION)
 
-.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed app-up app-down api-dev api-requirements web-check publish-model rollback-prod
+.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days
 
 help: ## Show available targets
 	@uv run python -c "import re; [print(f'{m[0]:<18} {m[1]}') for m in re.findall(r'^([a-z-]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -89,6 +89,9 @@ publish-model: ## Copy the local champion to AWS and point SSM at it (AWS write:
 
 rollback-prod: ## Swap the prod (SSM) champion back to the previous version (AWS write: owner OK)
 	uv run python scripts/rollback_prod.py --models-bucket $(call tf_out,models_bucket) --region $(AWS_REGION)
+
+upload-sample-days: ## Copy 9 real silver days to the AWS data bucket for the sample board (AWS write: owner OK)
+	uv run python scripts/upload_sample_days.py --data-bucket $(call tf_out,data_bucket) --region $(AWS_REGION)
 
 train-dag: ## Unpause and trigger training_pipeline in Airflow (Phase 4)
 	$(COMPOSE) --profile airflow exec airflow-scheduler airflow dags unpause training_pipeline

@@ -13,7 +13,7 @@ RUN pip install --no-cache-dir --require-hashes -r /tmp/requirements.txt --targe
 COPY configs/stations.yaml ${LAMBDA_TASK_ROOT}/configs/stations.yaml
 COPY src/dbdelay ${LAMBDA_TASK_ROOT}/dbdelay
 COPY services/api/app ${LAMBDA_TASK_ROOT}/app
-COPY services/api/lambda_handler.py ${LAMBDA_TASK_ROOT}/
+COPY services/api/lambda_handler.py services/api/seed_handler.py ${LAMBDA_TASK_ROOT}/
 
 FROM base AS local
 COPY services/api/requirements-local.txt /tmp/requirements-local.txt
