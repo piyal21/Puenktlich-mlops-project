@@ -30,7 +30,7 @@ def good_site() -> dict[tuple[str, str], Any]:
         ("POST", "/api/v1/predict"): _json(200, {"p_late": 0.3, "risk_level": "medium"}),
         ("GET", "/api/v1/model"): _json(200, {"version": "1"}),
         ("GET", "/api/docs"): smoke.Response(200, {"content-type": "text/html"}, b"<html>"),
-        ("GET", "/api/v1/stations/123/departures?hours=3"): _json(
+        ("GET", "/api/v1/stations/1234567/departures?hours=3"): _json(
             404, {"type": "/errors/station-not-supported"}, "application/problem+json"
         ),
         ("GET", "/station/8010101"): smoke.Response(
@@ -62,7 +62,7 @@ def test_all_checks_pass_on_a_good_site() -> None:
             "deep_link_serves_spa",
         ),
         (
-            ("GET", "/api/v1/stations/123/departures?hours=3"),
+            ("GET", "/api/v1/stations/1234567/departures?hours=3"),
             smoke.Response(404, {"content-type": "text/html"}, SPA),
             "api_404_is_problem_json",
         ),

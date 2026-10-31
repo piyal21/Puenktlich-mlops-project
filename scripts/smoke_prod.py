@@ -109,7 +109,7 @@ def api_docs(fetch: Fetch, base: str) -> str | None:
 
 
 def api_404_is_problem_json(fetch: Fetch, base: str) -> str | None:
-    resp = fetch("GET", base + "/api/v1/stations/123/departures?hours=3", None)
+    resp = fetch("GET", base + "/api/v1/stations/1234567/departures?hours=3", None)
     ctype = resp.headers.get("content-type", "")
     if resp.status != HTTPStatus.NOT_FOUND or not ctype.startswith("application/problem+json"):
         return f"status {resp.status}, content-type {ctype!r}"
