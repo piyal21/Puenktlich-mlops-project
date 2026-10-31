@@ -17,11 +17,18 @@ TF_PROD := infra/envs/prod
 tf_out = $(shell terraform -chdir=$(TF_PROD) output -raw $(1))
 # Pinned by digest (0.64.1); runs from Docker, nothing to install.
 TRIVY_IMAGE := aquasec/trivy@sha256:a8ca29078522f30393bdb34225e4c0994d38f37083be81a42da3a2a7e1488e9e
-AWS_TARGETS := publish-model rollback-prod upload-sample-days tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply
-$(AWS_TARGETS): export AWS_PROFILE := $(AWS_PROFILE)
-$(AWS_TARGETS): export AWS_REGION := $(AWS_REGION)
+IMAGE_TAG ?= $(shell git rev-parse --short=12 HEAD)
+ECR_REPO = $(call tf_out,ecr_repository_url)
+ECR_REGISTRY = $(firstword $(subst /, ,$(ECR_REPO)))
+AWS_TARGETS := publish-model rollback-prod upload-sample-days tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply image-push web-deploy smoke-prod
+$(AWS_TARGETS) aws-check: export AWS_PROFILE := $(AWS_PROFILE)
+$(AWS_TARGETS) aws-check: export AWS_REGION := $(AWS_REGION)
+# Git Bash would rewrite "/*" and docker -v paths into Windows paths.
+$(AWS_TARGETS) tf-scan: export MSYS_NO_PATHCONV := 1
+# Fail fast with one clear line when the 12 h `aws login` session is gone.
+$(AWS_TARGETS): aws-check
 
-.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply
+.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply aws-check image-push web-deploy smoke-prod
 
 help: ## Show available targets
 	@uv run python -c "import re; [print(f'{m[0]:<18} {m[1]}') for m in re.findall(r'^([a-z-]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -158,3 +165,23 @@ tf-plan: ## Plan the whole prod stack (read-only); saves prod.tfplan
 
 tf-apply: ## Apply the saved prod.tfplan (AWS write: owner OK)
 	terraform -chdir=$(TF_PROD) apply -input=false prod.tfplan
+
+# --- Deploy from the laptop (no CI deploys on this account, ADR 0002) ----------------------
+
+aws-check: ## Check the `aws login` session (12 h) before any AWS command
+	@aws sts get-caller-identity --query "'aws login ok'" --output text || (echo AWS login missing or expired: run "aws login --profile puenktlich" && exit 1)
+
+image-push: ## Build the API image (linux/amd64) and push it to ECR, tag = git SHA (AWS write: owner OK)
+	git diff --quiet HEAD
+	aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(ECR_REGISTRY)
+	docker buildx build --platform linux/amd64 --target lambda --provenance=false -f services/api/Dockerfile -t $(ECR_REPO):$(IMAGE_TAG) --push .
+	@echo pushed $(ECR_REPO):$(IMAGE_TAG) - next: TF_VAR_api_image_tag=$(IMAGE_TAG) make tf-plan
+
+web-deploy: ## Build the frontend, sync it to the web bucket, invalidate CloudFront (AWS write: owner OK)
+	npm --prefix frontend ci
+	npm --prefix frontend run build
+	aws s3 sync frontend/dist s3://$(call tf_out,web_bucket) --delete
+	aws cloudfront create-invalidation --distribution-id $(call tf_out,cloudfront_distribution_id) --paths "/*"
+
+smoke-prod: ## Check the public site end to end through CloudFront (read-only)
+	uv run python scripts/smoke_prod.py --base https://$(call tf_out,cloudfront_domain)
