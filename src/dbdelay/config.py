@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 
     app_env: Literal["local", "test", "prod"] = "local"
     log_level: LogLevel = "INFO"
-    aws_region: str = "eu-central-1"
+    aws_region: str = "eu-north-1"
 
     # Storage: endpoint set → S3-compatible (MinIO); unset → real AWS S3.
     storage_endpoint_url: str | None = None

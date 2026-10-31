@@ -14,7 +14,7 @@ from dbdelay.registry.artifacts import (
     read_bundle_files,
     write_bundle,
 )
-from dbdelay.registry.pointer import ModelPointer, ObjectStorePointer, PointerState
+from dbdelay.registry.pointer import ModelPointer, PointerState, make_pointer
 from dbdelay.storage import ObjectStore, make_s3_client
 from dbdelay.training.config import load_training_config
 from dbdelay.training.tracking import MlflowTracker, Tracker
@@ -90,7 +90,7 @@ def rollback_main(argv: Sequence[str] | None = None, *, tracker: Tracker | None 
     try:
         state = rollback(
             store,
-            ObjectStorePointer(store),
+            make_pointer(settings, store),
             tracker or MlflowTracker(settings.mlflow_tracking_uri),
             model_name=cfg.registry.model_name,
         )

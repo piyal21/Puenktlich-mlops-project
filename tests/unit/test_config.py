@@ -9,7 +9,7 @@ from dbdelay.errors import ConfigError
 def test_defaults_target_local_minio_bucket() -> None:
     settings = get_settings()
     assert settings.app_env == "local"
-    assert settings.aws_region == "eu-central-1"
+    assert settings.aws_region == "eu-north-1"
     assert settings.storage_endpoint_url is None
     assert settings.data_bucket == "puenktlich-local"
 

@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
 
 # rules.md §6.1: boto3 connect 3 s / read 10 s, max 3 attempts.
-_BOTO_CONFIG = Config(
+BOTO_CONFIG = Config(
     connect_timeout=3,
     read_timeout=10,
     retries={"max_attempts": 3, "mode": "standard"},
@@ -42,7 +42,7 @@ def make_s3_client(settings: Settings | None = None) -> "S3Client":
     settings = settings or get_settings()
     if settings.storage_endpoint_url is None:
         # Real AWS: credentials come from the default chain (Lambda role, SSO profile).
-        return boto3.client("s3", region_name=settings.aws_region, config=_BOTO_CONFIG)
+        return boto3.client("s3", region_name=settings.aws_region, config=BOTO_CONFIG)
 
     access_key = settings.storage_access_key_id
     secret_key = settings.storage_secret_access_key
@@ -59,7 +59,7 @@ def make_s3_client(settings: Settings | None = None) -> "S3Client":
         aws_access_key_id=access_key.get_secret_value(),
         aws_secret_access_key=secret_key.get_secret_value(),
         # MinIO needs path-style addressing (no bucket subdomains on localhost).
-        config=_BOTO_CONFIG.merge(Config(s3={"addressing_style": "path"})),
+        config=BOTO_CONFIG.merge(Config(s3={"addressing_style": "path"})),
     )
 
 
