@@ -34,7 +34,7 @@ flowchart LR
     PG[("Postgres")]
   end
 
-  subgraph AWS["Online plane (AWS eu-central-1)"]
+  subgraph AWS["Online plane (AWS eu-north-1)"]
     SCH["EventBridge Scheduler"]
     ING["Lambda: ingest"]
     ETL["Lambda: etl_daily"]
@@ -90,6 +90,7 @@ flowchart LR
 | `etl_daily` Lambda | Python, `jobs` image | Daily 03:30 Europe/Berlin | Bronze of D-1 | `silver/departures/source=live/date=D-1/` |
 | `monitor` Lambda | Python + Evidently, `jobs` image | Daily 04:30 Europe/Berlin | Silver D-1, champion artifacts | `public/health/*`, `public/reports/*`, CloudWatch metrics, `control/retrain_requested.json` |
 | `api` Lambda | FastAPI + Mangum, `api` image | HTTP via API Gateway | `live/boards/latest.json.gz`, champion artifacts, SSM pointer | CloudWatch Logs (prediction log) |
+| `sample_board` Lambda (Phase 6, until Phase 7 ingestion) | `api` image, handler `seed_handler.handler` | Every 15 min (EventBridge Scheduler) | `samples/silver/departures/source=hf/…` (9 real days) | `live/boards/latest.json.gz` (`source="sample"`) |
 | Frontend | React SPA | CloudFront | `/api/v1/*`, `/health/*.json` | — |
 | Airflow `backfill_history` | Airflow 3 (local) | Manual | Hugging Face monthly parquet | MinIO bronze/silver |
 | Airflow `training_pipeline` | Airflow 3 (local) | Monthly + triggered | MinIO silver (hf) + S3 silver (live) | MinIO gold, MLflow, S3 models, SSM |
@@ -121,7 +122,8 @@ History stays **local** (MinIO) to respect the S3 free-tier storage budget. AWS 
 `<acct>` = AWS account id suffix to make names unique.
 
 ```
-s3://puenktlich-data-<acct>/                (private, SSE-S3, versioning off, lifecycle rules)
+s3://puenktlich-data-<acct>/                (private, SSE-S3, versioning on — old versions expire after 1 day, lifecycle rules)
+├── samples/silver/departures/source=hf/date=…/part-0.parquet             # Phase 6: 9 real days for the sample board
 ├── bronze/timetables/kind=plan/date=YYYY-MM-DD/run=<ISO-ts>.jsonl.gz     # expire after 30 days
 ├── bronze/timetables/kind=fchg/date=YYYY-MM-DD/run=<ISO-ts>.jsonl.gz     # expire after 30 days
 ├── live/plans/latest.json.gz                                             # overwritten hourly
@@ -308,14 +310,15 @@ Locally (Phase 4) the bundle lives in the models bucket (`puenktlich-local`) and
 - SSM `/puenktlich/prod/model/champion_version` = live version. `/…/previous_version` = the one before.
 - Release: upload artifacts → verify → write `previous_version` ← current → write `champion_version` ← new → set MLflow alias `@champion`.
 - API and monitor re-read the pointer every **5 minutes** (TTL cache) → new model live without redeploy.
-- Rollback: `make rollback` swaps the pointer back to `previous_version` and moves the MLflow alias.
+- Rollback: `make rollback` swaps the local pointer back to `previous_version` and moves the MLflow alias; `make rollback-prod` swaps the SSM pointer (MLflow untouched).
+- Prod release (Phase 6): `make publish-model` copies the **local champion** (the gate's choice) from MinIO to the AWS models bucket, verifies it there and moves the SSM pointer; it takes no version argument, so it cannot become a manual promotion.
 - Terraform creates the SSM parameters but uses `lifecycle { ignore_changes = [value] }` so model releases don't cause drift.
 
 ---
 
 ## 7. Serving
 
-- **Runtime:** FastAPI app wrapped by Mangum, on Lambda (container image, 1024 MB, timeout 15 s).
+- **Runtime:** FastAPI app wrapped by Mangum, on Lambda (container image, 512 MB = account quota, timeout 15 s). Measured (Phase 6): normal cold init 2.1–2.3 s, warm board ~1.8 s, warm health ~0.16 s, peak memory 303 MB.
 - **Entry:** CloudFront `/api/*` → API Gateway HTTP API (`$default` stage) → Lambda. Same origin as the frontend → no CORS needed in production (CORS allowed only for `http://localhost:5173` in dev).
 - **Model loading:** on cold start, read SSM pointer → download artifacts to `/tmp/models/<version>/` → verify checksums → load LightGBM booster + calibrator. Cached in module scope.
 - **Board:** read `live/boards/latest.json.gz` (cache 60 s in memory) → filter station and next N hours → build features → batch predict → attach risk level. CloudFront caches board responses for 60 s.
@@ -461,7 +464,10 @@ flowchart LR
   FE --> SM["smoke test<br/>/api/v1/health, /api/v1/model"]
 ```
 
-- **Auth:** GitHub OIDC → two IAM roles created in `infra/bootstrap`:
+- ⚠️ **Current account (ADR 0002):** an AWS-managed SCP denies creating the GitHub OIDC provider, so CD to
+  AWS is not possible yet; Phase 6 deploys from the laptop (`make` targets, `aws login`). The route
+  (laptop-only / Paid plan + advanced features / new classic account) is decided before Phase 8.
+- **Auth (target design):** GitHub OIDC → two IAM roles created in `infra/bootstrap`:
   - `puenktlich-gh-plan` — read-only, trusted for `pull_request` on this repo.
   - `puenktlich-gh-deploy` — deploy permissions, trusted only for `repo:<owner>/puenktlich:environment:production`.
 - **Branch protection:** `main` requires CI to pass; no direct pushes.
@@ -474,30 +480,36 @@ flowchart LR
 
 ```
 infra/
+├── .trivyignore        # accepted Trivy findings, each with its reason (ADR 0002)
 ├── bootstrap/          # applied once, locally, with local state
-│   └── main.tf         # tf-state bucket, GitHub OIDC provider, gh-plan & gh-deploy roles
+│   └── *.tf            # tf-state bucket only (OIDC provider + CI roles: SCP-denied, ADR 0002)
 ├── modules/
-│   ├── data_lake/      # data + models buckets, lifecycle, encryption, public access block
-│   ├── ecr/            # api & jobs repos, lifecycle, scan on push
-│   ├── lambda_image/   # generic container Lambda + role + log group (retention)
-│   ├── http_api/       # API Gateway HTTP API, throttling, access logs
-│   ├── schedules/      # EventBridge Scheduler schedules (timezone Europe/Berlin)
-│   ├── web_cdn/        # web bucket, CloudFront (OAC), /api/* behavior, security headers
-│   ├── ssm/            # parameters (pointer ignore_changes; secrets created empty)
-│   ├── observability/  # SNS topic + email subscription, alarms, dashboard
-│   └── budget/         # AWS Budgets with email alerts
+│   ├── data_lake/      # data + models buckets, lifecycle, encryption, public access block, TLS-only
+│   ├── ecr/            # api repo: immutable tags, scan on push, keep last 3 images
+│   ├── lambda_image/   # generic container Lambda + own role + log group (14 d)
+│   ├── http_api/       # API Gateway HTTP API, throttling 10/20, access logs
+│   ├── schedules/      # EventBridge Scheduler (Europe/Berlin); Phase 6: sample board every 15 min
+│   ├── web_cdn/        # web bucket, CloudFront (OAC), /api/* behaviours, SPA rewrite function, headers
+│   ├── ssm/            # model pointer parameters (value "none", ignore_changes)
+│   ├── observability/  # SNS topic + email subscription, alarms (API 5xx, throttles, sample board)
+│   └── budget/         # imported hand-made budget (credits/refunds excluded)
 └── envs/
     └── prod/
-        ├── backend.tf      # s3 backend, use_lockfile = true
-        ├── main.tf         # wires modules together
-        ├── variables.tf    # image tags, alert email, station count …
-        ├── outputs.tf      # cloudfront domain, api url, bucket names
-        └── terraform.tfvars
+        ├── versions.tf     # provider + partial s3 backend (use_lockfile = true)
+        ├── main.tf         # wires modules together, IAM policies per Lambda, budget import
+        ├── variables.tf    # region, alert email, image tag, API memory/timeout
+        ├── outputs.tf      # cloudfront domain, api endpoint, bucket names, function names
+        ├── backend.hcl     # git-ignored, written by `make tf-bootstrap-apply`
+        └── terraform.auto.tfvars  # git-ignored: alert_email, api_image_tag
 ```
 
-- Terraform `>= 1.10`, AWS provider `~> 6.0`, S3 backend with **native lockfile** (no DynamoDB lock table).
-- Default tags on every resource: `project=puenktlich`, `env=prod`, `managed_by=terraform`, `owner=<you>`.
-- Secret *values* (DB API keys, alert email) are **never** in `.tfvars`; secrets are set once with the AWS CLI.
+- Terraform `>= 1.10` (used: 1.17.1), AWS provider `~> 6.0` (lock: 6.71.0), S3 backend with **native lockfile**.
+- Default tags on every resource: `project=puenktlich`, `env=prod`, `managed_by=terraform`, `owner=piyal21`.
+- No account id in committed files: names use `data.aws_caller_identity`; account-specific values live in
+  git-ignored `backend.hcl` / `terraform.auto.tfvars`. Plans are saved (`-out`) and applied as reviewed.
+- Laptop deploy flow (Phase 6): `make tf-bootstrap-plan/apply` → `make tf-init` → `make tf-plan-stage-a` /
+  `make tf-apply` → `make image-push` → `make upload-sample-days` → `make publish-model` → `make tf-plan` /
+  `make tf-apply` → `make web-deploy` → `make smoke-prod`. Every AWS write needs the owner's OK.
 
 ---
 
@@ -505,13 +517,13 @@ infra/
 
 | Area | Control |
 |---|---|
-| Identity | Root account MFA; daily work via IAM Identity Center user; no long-lived keys in CI (OIDC) |
+| Identity | New-experience account (ADR 0002): AWS Builder ID with MFA, no root user; CLI via `aws login` (12 h sessions); no long-lived keys anywhere; CI OIDC blocked by SCP until the Phase 8 decision |
 | Least privilege | One IAM role per Lambda, scoped to exact bucket prefixes and parameters; no `*` actions/resources |
 | Secrets | SSM SecureString; read at cold start; never logged |
 | Storage | All buckets: Block Public Access, SSE-S3, TLS-only bucket policy; web bucket readable only via CloudFront OAC |
 | Edge | CloudFront security headers policy (HSTS, CSP, X-Content-Type-Options, Referrer-Policy, frame-ancestors none) |
 | API abuse | API Gateway throttling (rate 10 req/s, burst 20); `hours` capped at 6; request body size limit; Pydantic validation |
-| Cost abuse | CloudFront caching for board responses; budget alarms; optional Lambda reserved concurrency when the account quota allows |
+| Cost abuse | CloudFront caching for board responses (60 s); API Gateway throttling; budget alarms; no reserved concurrency (account limit is 5 concurrent executions) |
 | Supply chain | Pinned deps (`uv.lock`, `package-lock.json`); pip-audit/npm audit; Trivy image + config scans; Dependabot |
 | Code | Ruff `S` (bandit) rules; gitleaks; no `eval`, no `pickle` for artifacts; `defusedxml` for XML |
 | Model integrity | SHA-256 checksums in manifest, verified before load; models bucket versioned |
@@ -526,7 +538,9 @@ infra/
 | `APP_ENV` | `local` | `prod` |
 | `STORAGE_ENDPOINT_URL` | `http://minio:9000` | *(unset → AWS S3)* |
 | `DATA_BUCKET` / `MODELS_BUCKET` / `WEB_BUCKET` | `puenktlich-local` | Terraform outputs |
-| `MODEL_POINTER_PARAM` | local file `.local/champion_version` | `/puenktlich/prod/model/champion_version` |
+| `AWS_REGION` | `eu-north-1` | `eu-north-1` (Lambda sets it) |
+| `MODEL_POINTER_PARAM` | `.local/champion_version` → MinIO object `models/_pointer.json` | `/puenktlich/prod/model/champion_version` (a leading `/` selects the SSM pointer) |
+| `SAMPLE_SILVER_ROOT` | `samples/` | `samples/` (`sample_board` Lambda) |
 | `DB_API_CLIENT_ID` / `DB_API_KEY` | `.env` (git-ignored) | SSM SecureString |
 | `MLFLOW_TRACKING_URI` | `http://mlflow:5000` | — |
 | `BOARD_KEY` | `live/boards/latest.json.gz` | same |
@@ -639,7 +653,7 @@ puenktlich/
 | CloudFront | < 1 GB | $0 (always free 1 TB) |
 | EventBridge Scheduler | ~4k invocations | $0 (14M free) |
 | CloudWatch | ≤ 10 metrics, ≤ 10 alarms, logs < 1 GB | $0 |
-| ECR | ~1.5 GB images | ~$0.15 |
+| ECR | 386.8 MB per image (measured, compressed), ≤ 3 kept | ~$0.04–0.12 |
 | SSM Standard params | 5 params | $0 |
 | **Total** | | **≈ $0.50 / month** |
 
@@ -671,3 +685,4 @@ puenktlich/
 6. **History stays local** — keeps S3 small; AWS holds only live data.
 7. **No pickle anywhere** — LightGBM text format + JSON calibrator; safer and portable.
 8. **Label & leakage policy** — `is_late = delay ≥ 6 min`, cancelled excluded, no change ⇒ on time, timetable-only features in v1 ([ADR 0001](adr/0001-label-and-leakage-policy.md)).
+9. **AWS account type** — region `eu-north-1`, laptop deploys, no OIDC until the Phase 8 decision, 512 MB Lambdas, imported budget, documented encryption/logging trade-offs ([ADR 0002](adr/0002-aws-account-type.md)).

@@ -175,7 +175,7 @@ Errors use `application/problem+json` (RFC 9457). Details in `architecture.md`.
 
 ## 11. Constraints and assumptions
 
-- AWS account on the new free-tier model (credits, 6-month Free plan). Region **eu-central-1 (Frankfurt)**.
+- AWS account on the new free-tier model (credits, 6-month Free plan, ends 2027-04-25). Region **eu-north-1 (Stockholm)** — fixed by the account type ([ADR 0002](adr/0002-aws-account-type.md)).
 - Local machine: x86-64, 32 GB RAM, no GPU → CPU-friendly models; Lambda images built for `x86_64`.
 - Airflow and MLflow run **locally** in Docker (managed Airflow is too expensive). Retraining therefore runs when the local stack is up; this is a documented, conscious trade-off.
 - DB API free plan: 60 calls/min, no SLA. Ingestion must respect the limit and tolerate gaps.
