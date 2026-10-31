@@ -62,7 +62,7 @@
 | Tests | pytest, pytest-cov, moto, Vitest, Testing Library | unittest-style classes for new tests |
 | Frontend | React 19 + Vite + TS (strict), Tailwind v4, TanStack Query, React Router, Recharts, lucide-react, self-hosted fonts via `@fontsource` | Next.js, Redux, CSS-in-JS libraries, UI kits (MUI/Chakra) |
 | IaC | Terraform ≥ 1.10, AWS provider ~> 6.0 | CDK, CloudFormation, Pulumi, click-ops |
-| CI/CD | GitHub Actions + OIDC | Long-lived AWS keys in GitHub secrets |
+| CI/CD | GitHub Actions + OIDC (blocked on the current AWS account by an AWS-managed SCP; route decided before Phase 8, see ADR 0002) | Long-lived AWS keys in GitHub secrets |
 
 ---
 
@@ -161,7 +161,7 @@ class NotFoundError(DbDelayError): ...             # unknown station/event
 - Keep `gitleaks`, Trivy (image + config), `pip-audit`, `npm audit`, and Ruff `S` rules green.
 
 ## 8. Cost rules
-- Region `eu-central-1` only. Every resource tagged (`project`, `env`, `managed_by`, `owner`).
+- Region `eu-north-1` only (fixed by the AWS account type, see ADR 0002). Every resource tagged (`project`, `env`, `managed_by`, `owner`).
 - Log groups always have retention (14 days default). ECR lifecycle keeps last 10 images. Bronze data expires after 30 days.
 - ≤ 10 custom CloudWatch metrics, ≤ 10 alarms.
 - Before adding any AWS resource, state its expected monthly cost in the PR description.
