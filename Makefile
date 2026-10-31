@@ -33,7 +33,8 @@ $(PY_AWS_TARGETS): export AWS_PROFILE := $(AWS_PY_PROFILE)
 $(PY_AWS_TARGETS): aws-py-profile
 aws-py-profile: export AWS_PROFILE := $(AWS_PROFILE)
 # Docker Desktop's Windows credential store rejects ECR tokens ("The stub received bad data"):
-# keep the 12 h ECR login in its own Docker config folder, outside the repo.
+# keep the 12 h ECR login in its own Docker config folder, outside the repo. Its config.json is
+# seeded with the registry entry, otherwise Docker falls back to the Windows store again.
 image-push: export DOCKER_CONFIG := $(or $(HOME),$(USERPROFILE))/.docker-puenktlich-ecr
 # Fail fast with one clear line when the 12 h `aws login` session is gone.
 $(AWS_TARGETS): aws-check
@@ -183,9 +184,10 @@ aws-check: ## Check the `aws login` session (12 h) before any AWS command
 
 image-push: ## Build the API image (linux/amd64) and push it to ECR, tag = git SHA (AWS write: owner OK)
 	git diff --quiet HEAD
+	uv run python -c "import json, os, sys; d = os.environ['DOCKER_CONFIG']; os.makedirs(d, exist_ok=True); p = os.path.join(d, 'config.json'); os.path.exists(p) or json.dump({'auths': {sys.argv[1]: {}}}, open(p, 'w'))" $(ECR_REGISTRY)
 	aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(ECR_REGISTRY)
 	docker buildx build --platform linux/amd64 --target lambda --provenance=false -f services/api/Dockerfile -t $(ECR_REPO):$(IMAGE_TAG) --push .
-	@echo pushed $(ECR_REPO):$(IMAGE_TAG) - next: TF_VAR_api_image_tag=$(IMAGE_TAG) make tf-plan
+	@echo pushed $(ECR_REPO):$(IMAGE_TAG) - next: set api_image_tag in infra/envs/prod/terraform.auto.tfvars, then make tf-plan
 
 web-deploy: ## Build the frontend, sync it to the web bucket, invalidate CloudFront (AWS write: owner OK)
 	npm --prefix frontend ci
