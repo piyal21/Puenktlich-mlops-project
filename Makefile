@@ -25,10 +25,20 @@ $(AWS_TARGETS) aws-check: export AWS_PROFILE := $(AWS_PROFILE)
 $(AWS_TARGETS) aws-check: export AWS_REGION := $(AWS_REGION)
 # Git Bash would rewrite "/*" and docker -v paths into Windows paths.
 $(AWS_TARGETS) tf-scan: export MSYS_NO_PATHCONV := 1
+# boto3 cannot read `aws login` sessions without botocore[crt]; the Python CLIs use a profile
+# whose credential_process asks the AWS CLI for them instead (no extra dependency).
+PY_AWS_TARGETS := publish-model rollback-prod upload-sample-days
+AWS_PY_PROFILE := $(AWS_PROFILE)-py
+$(PY_AWS_TARGETS): export AWS_PROFILE := $(AWS_PY_PROFILE)
+$(PY_AWS_TARGETS): aws-py-profile
+aws-py-profile: export AWS_PROFILE := $(AWS_PROFILE)
+# Docker Desktop's Windows credential store rejects ECR tokens ("The stub received bad data"):
+# keep the 12 h ECR login in its own Docker config folder, outside the repo.
+image-push: export DOCKER_CONFIG := $(or $(HOME),$(USERPROFILE))/.docker-puenktlich-ecr
 # Fail fast with one clear line when the 12 h `aws login` session is gone.
 $(AWS_TARGETS): aws-check
 
-.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply aws-check image-push web-deploy smoke-prod
+.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply aws-check aws-py-profile image-push web-deploy smoke-prod
 
 help: ## Show available targets
 	@uv run python -c "import re; [print(f'{m[0]:<18} {m[1]}') for m in re.findall(r'^([a-z-]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -185,3 +195,7 @@ web-deploy: ## Build the frontend, sync it to the web bucket, invalidate CloudFr
 
 smoke-prod: ## Check the public site end to end through CloudFront (read-only)
 	uv run python scripts/smoke_prod.py --base https://$(call tf_out,cloudfront_domain)
+
+aws-py-profile: ## Local AWS profile `<profile>-py` that hands the `aws login` session to boto3
+	aws configure set credential_process "aws configure export-credentials --profile $(AWS_PROFILE) --format process" --profile $(AWS_PY_PROFILE)
+	aws configure set region $(AWS_REGION) --profile $(AWS_PY_PROFILE)
