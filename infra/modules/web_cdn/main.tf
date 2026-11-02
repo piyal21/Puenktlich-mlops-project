@@ -166,7 +166,7 @@ resource "aws_cloudfront_response_headers_policy" "app" {
         "script-src 'self'",
         "style-src 'self'",
         "img-src 'self' data:",
-        "font-src 'self'",
+        "font-src 'self' data:", # Vite inlines small font files as data: URIs
         "connect-src 'self'",
         "object-src 'none'",
         "base-uri 'self'",
