@@ -32,7 +32,7 @@ For the portfolio, the problem is a vehicle: it naturally needs **real ETL, larg
 5. Make the system **transparent**: a public *Model Health* page showing live accuracy, drift and model version.
 
 ### Non-goals (explicitly out of scope)
-- Door-to-door journey planning, connections, or routing (use DB Navigator for that).
+- Door-to-door journey planning, connections, or routing (use DB Navigator for that). The board's "Going to" filter (owner, 2026-11-02) only narrows one station's departures to a train's final stop; the risk still means leaving this station 6+ min late.
 - Predicting the exact number of delay minutes (v1 is binary risk).
 - Real-time streaming infrastructure (Kafka, Kinesis). Micro-batch every 15 min is enough.
 - Kubernetes, SageMaker, MWAA, or any always-on paid compute.

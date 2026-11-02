@@ -3,6 +3,25 @@
 One entry per phase branch (owner rule, from Phase 2 on). Phases 0–1 are described in [`Phases/`](Phases/).
 Only measured numbers; anything not measured is `TBD`.
 
+## Phase 6 follow-up — "Going to" filter (`phase-6/destination-filter`)
+
+**Built**
+- Board dropdown "Going to (final stop of the train)": lists the board's final stops A–Z, shows only trains to the chosen
+  one; resets on station change; kept across 1/3/6 h, with "Show all trains" when none match. Frontend only.
+
+**Key decisions**
+- Owner chose this over a true A→B prediction, which would need a new label and retraining (2026-11-02). Routing stays out of scope.
+- Dropdown, not typed search: only places with trains, works on phones and screen readers. No API, model or dependency change.
+
+**Tested**
+- `make web-check`: 55 passed (8 new), lint and types clean. Production check: see the phase doc.
+
+**Known gaps / open items**
+- Final stop only: a train passing through the chosen station isn't listed. Matching all stops needs the stop list from Phase 7.
+
+**Docs touched**
+- `docs/prd.md` (non-goal note), `CHANGELOG.md`, `Phases/phase-6-cloud-infra.md`, `CLAUDE.md`.
+
 ## Phase 6 — Cloud infrastructure (`phase-6/cloud-infra`)
 
 **Built**

@@ -123,6 +123,14 @@ make rollback-prod                   # go back one model version
 - **AWS cost is still an estimate** (about $0.30–0.50/month). Check Cost Explorer after a week.
 - **DB API secrets are not in SSM yet.** Only Phase 7's ingestion needs them.
 
-## 8. What's next
+## 8. Follow-up: the "Going to" filter
+
+Seeing the live board, the owner expected to go from A to B. The site is a departure board for one station, so a small
+dropdown was added on branch `phase-6/destination-filter`: pick a final stop and only those trains stay, with the same
+risk badges. It's frontend only ([`DestinationFilter.tsx`](../frontend/src/components/DestinationFilter.tsx),
+[`destinations.ts`](../frontend/src/lib/destinations.ts)). It matches only the train's **final** stop; matching all stops
+needs the stop list from Phase 7. The badge still means "leaves this station 6+ minutes late", not delay on arrival.
+
+## 9. What's next
 
 **Phase 7 — Live data pipeline:** real departures every 15 minutes, labelled silver data every night, and a reconciliation check against history. The owner's go comes first.
