@@ -81,6 +81,12 @@ def rollback(
     current = pointer.get()
     if current is None or current.previous_version is None:
         raise ModelNotAvailableError("no previous model version to roll back to")
+    if current.previous_version == current.champion_version:
+        # An earlier rollback wrote `previous` but failed on `champion` (SSM has no transaction).
+        raise ModelNotAvailableError(
+            f"pointer is half-written: champion and previous are both {current.champion_version}; "
+            "check the versions in models/ and repair the pointer"
+        )
     load_bundle(store, current.previous_version, root)
     state = pointer.set(current.previous_version, current.champion_version)
     tracker.set_alias(model_name, CHAMPION, state.champion_version)

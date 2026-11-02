@@ -85,3 +85,17 @@ def test_make_pointer_picks_ssm_for_slash_param(s3_store: ObjectStore) -> None:
 def test_make_pointer_picks_object_store_otherwise(s3_store: ObjectStore) -> None:
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
     assert isinstance(make_pointer(settings, s3_store), ObjectStorePointer)
+
+
+def test_ssm_pointer_previous_set_champion_none_is_none(ssm: Any) -> None:
+    ssm.put_parameter(Name=PREV, Value="1", Type="String", Overwrite=True)
+    assert SsmPointer(ssm, CHAMP).get() is None
+
+
+def test_ssm_pointer_champion_set_previous_missing() -> None:
+    with mock_aws():
+        client = boto3.client("ssm", region_name="eu-north-1")
+        client.put_parameter(Name=CHAMP, Value="1", Type="String")
+        read = SsmPointer(client, CHAMP).get()
+        assert read is not None
+        assert (read.champion_version, read.previous_version) == ("1", None)

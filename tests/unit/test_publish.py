@@ -1,10 +1,12 @@
+import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import boto3
 import pytest
-from botocore.exceptions import NoCredentialsError
+from botocore.exceptions import ClientError, NoCredentialsError, ProfileNotFound
 from moto import mock_aws
 
 from dbdelay.errors import ArtifactIntegrityError, ExternalServiceError, ModelNotAvailableError
@@ -13,6 +15,7 @@ from dbdelay.registry.artifacts import load_bundle, models_prefix
 from dbdelay.registry.pointer import NONE_VALUE, ObjectStorePointer, SsmPointer
 from dbdelay.registry.publish import LOGIN_HINT, publish_champion, publish_main
 from dbdelay.registry.release import release_version, rollback
+from dbdelay.serving.samples import upload_main
 from dbdelay.storage import ObjectStore
 from tests.bundles import bundle_manifest
 from tests.fakes import FakeTracker
@@ -168,3 +171,75 @@ def test_rollback_prod_main_swaps(
 class _Cfg:
     class registry:
         model_name = "m"
+
+
+class _FailsSecondPut:
+    """SSM client whose second put_parameter fails, like a throttle in the middle of `set`."""
+
+    def __init__(self, client: Any) -> None:
+        self._client = client
+        self.puts = 0
+
+    def get_parameters(self, **kwargs: Any) -> Any:
+        return self._client.get_parameters(**kwargs)
+
+    def put_parameter(self, **kwargs: Any) -> Any:
+        self.puts += 1
+        if self.puts == 2:
+            raise ClientError({"Error": {"Code": "ThrottlingException", "Message": "x"}}, "Put")
+        return self._client.put_parameter(**kwargs)
+
+
+def test_half_failed_rollback_is_refused_on_retry(env: Env, bundle_files: dict[str, bytes]) -> None:
+    for version in ("1", "2"):
+        _local_release(env, bundle_files, version)
+        _publish(env)
+    flaky = SsmPointer(_FailsSecondPut(env.ssm), CHAMP)
+    with pytest.raises(ExternalServiceError):
+        rollback(env.target, flaky, publish.NoAlias(), model_name="m")
+    # previous was overwritten, champion was not: retrying must not report a fake success.
+    with pytest.raises(ModelNotAvailableError, match="half-written"):
+        rollback(env.target, env.target_pointer, publish.NoAlias(), model_name="m")
+
+
+@pytest.fixture
+def broken_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A profile whose credential_process fails: what an expired `aws login` looks like to boto3."""
+    config = tmp_path / "aws_config"
+    command = f'"{sys.executable}" -c "raise SystemExit(1)"'
+    config.write_text(f"[profile broken]\ncredential_process = {command}\n", encoding="utf-8")
+    for name in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"):
+        monkeypatch.delenv(name)
+    monkeypatch.setenv("AWS_CONFIG_FILE", str(config))
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", str(tmp_path / "none"))
+    monkeypatch.setenv("AWS_PROFILE", "broken")
+    monkeypatch.setattr(boto3, "DEFAULT_SESSION", None)
+
+
+@pytest.mark.parametrize(
+    ("main", "args"),
+    [
+        (publish_main, ["--models-bucket", "b"]),
+        (publish.rollback_prod_main, ["--models-bucket", "b"]),
+        (upload_main, ["--data-bucket", "b"]),
+    ],
+)
+@pytest.mark.usefixtures("broken_credentials")
+def test_prod_cli_with_broken_credentials_prints_the_hint(
+    main: Any, args: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(args) == 1
+    assert capsys.readouterr().err == LOGIN_HINT + "\n"
+
+
+def test_prod_cli_other_botocore_error_is_one_line(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def no_profile(_region: str) -> None:
+        raise ProfileNotFound(profile="nope")
+
+    monkeypatch.setattr(publish, "make_aws_s3_client", no_profile)
+    assert publish_main(["--models-bucket", "b"]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("publish refused: ")
+    assert err.count("\n") == 1

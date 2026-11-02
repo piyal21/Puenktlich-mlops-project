@@ -8,7 +8,9 @@ import argparse
 import sys
 from collections.abc import Callable, Sequence
 
-from dbdelay.aws_session import LOGIN_HINT, is_login_error
+from botocore.exceptions import BotoCoreError
+
+from dbdelay.aws_session import LOGIN_HINT, refusal_line
 from dbdelay.config import get_settings
 from dbdelay.errors import DbDelayError, ModelNotAvailableError
 from dbdelay.registry.artifacts import read_bundle_files
@@ -71,11 +73,8 @@ def _run(verb: str, action: Callable[[], PointerState]) -> int:
     """Operator-facing CLI wrapper: one line on stdout, or one line on stderr and exit 1."""
     try:
         state = action()
-    except DbDelayError as exc:
-        if is_login_error(exc):
-            sys.stderr.write(LOGIN_HINT + "\n")
-        else:
-            sys.stderr.write(f"{verb} refused: {exc}\n")
+    except (DbDelayError, BotoCoreError) as exc:  # botocore loads credentials at client creation
+        sys.stderr.write(refusal_line(verb, exc) + "\n")
         return 1
     sys.stdout.write(
         f"prod champion {state.champion_version} (previous {state.previous_version})\n"

@@ -14,7 +14,11 @@ spec.loader.exec_module(smoke)
 
 BASE = "https://d1.cloudfront.net"
 SPA = b'<!doctype html><html><body><div id="root"></div></body></html>'
-SECURITY = {"strict-transport-security": "max-age=31536000", "content-security-policy": "x"}
+SECURITY = {
+    "strict-transport-security": "max-age=31536000",
+    "content-security-policy": "x",
+    "cache-control": "no-cache",
+}
 
 
 def _json(status: int, data: Any, ctype: str = "application/json") -> Any:
@@ -81,7 +85,18 @@ def test_all_checks_pass_on_a_good_site() -> None:
             _json(411, {"type": "/errors/length-required"}),
             "predict_post",
         ),
-        (("GET", "/"), smoke.Response(200, {"content-type": "text/html"}, SPA), "security_headers"),
+        (
+            ("GET", "/"),
+            smoke.Response(200, {"content-type": "text/html", "cache-control": "no-cache"}, SPA),
+            "security_headers",
+        ),
+        (
+            ("GET", "/"),
+            smoke.Response(
+                200, {"content-type": "text/html"} | SECURITY | {"cache-control": "max-age=60"}, SPA
+            ),
+            "index_html_revalidates",
+        ),
     ],
 )
 def test_a_broken_response_fails_its_check(key: tuple[str, str], bad: Any, check: str) -> None:

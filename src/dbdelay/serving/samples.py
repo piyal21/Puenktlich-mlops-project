@@ -10,7 +10,9 @@ import sys
 from collections.abc import Sequence
 from datetime import date, timedelta
 
-from dbdelay.aws_session import LOGIN_HINT, is_login_error
+from botocore.exceptions import BotoCoreError
+
+from dbdelay.aws_session import refusal_line
 from dbdelay.config import get_settings
 from dbdelay.data.silver import silver_key
 from dbdelay.errors import DbDelayError
@@ -50,8 +52,8 @@ def upload_main(argv: Sequence[str] | None = None) -> int:
             SAMPLE_DAYS,
             settings.sample_silver_root,
         )
-    except DbDelayError as exc:
-        sys.stderr.write((LOGIN_HINT if is_login_error(exc) else f"upload refused: {exc}") + "\n")
+    except (DbDelayError, BotoCoreError) as exc:  # botocore loads credentials at client creation
+        sys.stderr.write(refusal_line("upload", exc) + "\n")
         return 1
     sys.stdout.write(f"uploaded {count} sample days to {settings.sample_silver_root}\n")
     return 0
