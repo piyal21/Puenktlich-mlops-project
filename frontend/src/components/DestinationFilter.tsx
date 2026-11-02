@@ -1,13 +1,14 @@
-import { useId } from "react";
+import { useId, type Ref } from "react";
 
 interface Props {
   options: string[];
   value: string | null;
   onChange: (destination: string | null) => void;
+  ref?: Ref<HTMLSelectElement>;
 }
 
 /** Narrows the board to one final stop. Matching stops along the way needs live data (Phase 7). */
-export function DestinationFilter({ options, value, onChange }: Props) {
+export function DestinationFilter({ options, value, onChange, ref }: Props) {
   const id = useId();
   // Keep the choice selectable when the current time window has no train to it.
   const names =
@@ -20,6 +21,7 @@ export function DestinationFilter({ options, value, onChange }: Props) {
         Going to <span className="font-normal text-muted">(final stop of the train)</span>
       </label>
       <select
+        ref={ref}
         id={id}
         value={value ?? ""}
         onChange={(event) => onChange(event.target.value === "" ? null : event.target.value)}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeDeparture } from "../test/fixtures";
-import { destinationsOf, goingTo } from "./destinations";
+import { destinationsOf, filterSummary, goingTo } from "./destinations";
 
 function to(destination: string | null, id = String(destination)) {
   return makeDeparture({
@@ -34,5 +34,34 @@ describe("goingTo", () => {
 
   it("keeps everything when no destination is chosen", () => {
     expect(goingTo(board, null)).toHaveLength(3);
+  });
+});
+
+describe("blank destinations (they occur in real data)", () => {
+  it("are not offered", () => {
+    expect(destinationsOf([to(""), to("   "), to("Erlangen")])).toEqual(["Erlangen"]);
+  });
+
+  it("padded names are offered once and still match", () => {
+    const board = [to(" Erlangen ", "a"), to("Erlangen", "b")];
+    expect(destinationsOf(board)).toEqual(["Erlangen"]);
+    expect(goingTo(board, "Erlangen")).toHaveLength(2);
+  });
+});
+
+describe("filterSummary", () => {
+  const board = [to("München Hbf", "a"), to("München Hbf", "b"), to("Erlangen")];
+
+  it("is empty without a choice", () => {
+    expect(filterSummary(board, null, 3)).toBe("");
+  });
+
+  it("counts the matching trains", () => {
+    expect(filterSummary(board, "München Hbf", 3)).toBe("2 of 3 trains go to München Hbf");
+  });
+
+  it("says when none match, in the window's words", () => {
+    expect(filterSummary(board, "Bonn", 1)).toBe("No trains to Bonn in the next hour");
+    expect(filterSummary(board, "Bonn", 6)).toBe("No trains to Bonn in the next 6 hours");
   });
 });

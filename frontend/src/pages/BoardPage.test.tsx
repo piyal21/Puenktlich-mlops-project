@@ -77,6 +77,7 @@ const FILTER_BOARDS: Record<string, unknown> = {
     station: { eva: "8000284", name: "Nürnberg Hbf" },
     departures: [train("1", "München Hbf"), train("2", "Erlangen"), train("3", "München Hbf")],
   }),
+  "8000261-1": makeBoard({ station: { eva: "8000261", name: "München Hbf" }, departures: [] }),
   // The 1 h window of the same station has no train to Erlangen.
   "8000284-1": makeBoard({
     station: { eva: "8000284", name: "Nürnberg Hbf" },
@@ -123,10 +124,16 @@ function renderFilterBoard() {
 
 const rows = () => screen.getByRole("list", { name: /Departures from/ }).querySelectorAll("li");
 
+/** The dropdown once the board has loaded (it renders earlier, without options). */
+async function loadedFilter() {
+  await screen.findByRole("list", { name: /Departures from/ });
+  return screen.getByRole("combobox", { name: /Going to/ });
+}
+
 describe("Going to filter", () => {
   it("offers the board's final stops and shows only trains to the chosen one", async () => {
     renderFilterBoard();
-    const filter = await screen.findByRole("combobox", { name: /Going to/ });
+    const filter = await loadedFilter();
     expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
       "All destinations",
       "Erlangen",
@@ -145,10 +152,7 @@ describe("Going to filter", () => {
 
   it("resets when the station changes", async () => {
     renderFilterBoard();
-    await userEvent.selectOptions(
-      await screen.findByRole("combobox", { name: /Going to/ }),
-      "Erlangen",
-    );
+    await userEvent.selectOptions(await loadedFilter(), "Erlangen");
     await userEvent.click(screen.getByRole("link", { name: "Go to München" }));
     await screen.findByRole("heading", { name: "München Hbf" });
     expect(screen.getByRole("combobox", { name: /Going to/ })).toHaveValue("");
@@ -157,10 +161,7 @@ describe("Going to filter", () => {
 
   it("keeps the choice across time windows and offers all trains when none match", async () => {
     renderFilterBoard();
-    await userEvent.selectOptions(
-      await screen.findByRole("combobox", { name: /Going to/ }),
-      "Erlangen",
-    );
+    await userEvent.selectOptions(await loadedFilter(), "Erlangen");
     await userEvent.click(screen.getByRole("button", { name: "1 h" }));
     // The station name sits in its own lang="de" span, so match the whole paragraph.
     expect(
@@ -174,5 +175,60 @@ describe("Going to filter", () => {
     await userEvent.click(screen.getByRole("button", { name: "Show all trains" }));
     expect(rows()).toHaveLength(1);
     expect(screen.getByRole("combobox", { name: /Going to/ })).toHaveValue("");
+  });
+});
+
+describe("Going to filter, accessibility and edge cases", () => {
+  it("moves focus to the dropdown after Show all trains", async () => {
+    renderFilterBoard();
+    await userEvent.selectOptions(await loadedFilter(), "Erlangen");
+    await userEvent.click(screen.getByRole("button", { name: "1 h" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Show all trains" }));
+    expect(screen.getByRole("combobox", { name: /Going to/ })).toHaveFocus();
+  });
+
+  it("announces the result to screen readers", async () => {
+    renderFilterBoard();
+    await userEvent.selectOptions(await loadedFilter(), "München Hbf");
+    expect(screen.getByRole("status")).toHaveTextContent("2 of 3 trains go to München Hbf");
+    await userEvent.selectOptions(await loadedFilter(), "Erlangen");
+    await userEvent.click(screen.getByRole("button", { name: "1 h" }));
+    await screen.findByRole("button", { name: "Show all trains" });
+    expect(screen.getByRole("status")).toHaveTextContent("No trains to Erlangen in the next hour");
+  });
+
+  it("names the destination in the list label while filtered", async () => {
+    renderFilterBoard();
+    await userEvent.selectOptions(await loadedFilter(), "Erlangen");
+    expect(
+      screen.getByRole("list", { name: "Departures from Nürnberg Hbf to Erlangen" }),
+    ).toBeInTheDocument();
+  });
+
+  it("can widen to 6 hours and keep the choice when nothing matches", async () => {
+    renderFilterBoard();
+    await userEvent.selectOptions(await loadedFilter(), "Erlangen");
+    await userEvent.click(screen.getByRole("button", { name: "1 h" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Show 6 hours" }));
+    await screen.findByRole("button", { name: /Erlangen/ });
+    expect(screen.getByRole("combobox", { name: /Going to/ })).toHaveValue("Erlangen");
+  });
+
+  it("keeps the dropdown when the whole board is empty", async () => {
+    renderFilterBoard();
+    await userEvent.click(await screen.findByRole("link", { name: "Go to München" }));
+    await screen.findByRole("heading", { name: "München Hbf" });
+    await userEvent.selectOptions(await loadedFilter(), "Erlangen");
+    await userEvent.click(screen.getByRole("button", { name: "1 h" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Show all trains" }));
+    expect(await screen.findByText("No departures in the next hour")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /Going to/ })).toHaveFocus();
+  });
+
+  it("opens the detail from a filtered row", async () => {
+    renderFilterBoard();
+    await userEvent.selectOptions(await loadedFilter(), "Erlangen");
+    await userEvent.click(screen.getByRole("button", { name: /Erlangen/ }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 });

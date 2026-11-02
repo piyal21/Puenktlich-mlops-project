@@ -14,10 +14,15 @@ Only measured numbers; anything not measured is `TBD`.
 - Dropdown, not typed search: only places with trains, works on phones and screen readers. No API, model or dependency change.
 
 **Tested**
-- `make web-check`: 55 passed (8 new), lint and types clean. Production check: see the phase doc.
+- `make web-check`: 66 passed (19 new), lint and types clean. Live: dropdown lists real final stops, 0 CSP violations, `make smoke-prod` 10/10.
+- Independent review: 0 Critical; fixed test-first: focus lost after "Show all trains", results not announced to screen readers, blank
+  destinations in real data (81 of 409,119 rows in 2026-08), untested paths. The dropdown stays mounted; a filtered empty result also offers 6 hours.
 
 **Known gaps / open items**
 - Final stop only: a train passing through the chosen station isn't listed. Matching all stops needs the stop list from Phase 7.
+- Deferred minors: `DepartureRow`/`DepartureDetail` show an empty destination for a blank name; no `color-scheme` for native controls in dark mode;
+  input borders below 3:1 (site-wide token); detail sheet focus if a live refetch changes the open train's destination (re-check in Phase 7);
+  `design.md` has no entry for the filter; `onClearDestination` is optional. Picking an option was not exercised in a real browser.
 
 **Docs touched**
 - `docs/prd.md` (non-goal note), `CHANGELOG.md`, `Phases/phase-6-cloud-infra.md`, `CLAUDE.md`.

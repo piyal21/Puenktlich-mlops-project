@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import type { Departure, Station } from "../api/types";
 import { DepartureBoard } from "../components/DepartureBoard";
@@ -8,7 +8,7 @@ import { StationSearch } from "../components/StationSearch";
 import { useDepartures } from "../hooks/useDepartures";
 import { useModel } from "../hooks/useModel";
 import { useStations } from "../hooks/useStations";
-import { destinationsOf } from "../lib/destinations";
+import { destinationsOf, filterSummary } from "../lib/destinations";
 import { formatTime } from "../lib/format";
 import { readRecent, rememberStation } from "../lib/recent";
 
@@ -31,6 +31,7 @@ export function BoardPage() {
     setDestinationEva(eva);
     setDestination(null);
   }
+  const filterRef = useRef<HTMLSelectElement>(null);
   const stations = useStations(query);
   const board = useDepartures(eva, hours);
   const model = useModel();
@@ -118,13 +119,16 @@ export function BoardPage() {
               ))}
             </div>
           </div>
-          {data && (data.departures.length > 0 || destination !== null) ? (
-            <DestinationFilter
-              options={destinationsOf(data.departures)}
-              value={destination}
-              onChange={setDestination}
-            />
-          ) : null}
+          {/* Always mounted: it keeps focus and layout while a window loads or empties. */}
+          <DestinationFilter
+            ref={filterRef}
+            options={destinationsOf(data?.departures ?? [])}
+            value={destination}
+            onChange={setDestination}
+          />
+          <div role="status" className="sr-only">
+            {filterSummary(data?.departures ?? [], data ? destination : null, hours)}
+          </div>
           <DepartureBoard
             data={data}
             isPending={board.isPending}
@@ -133,7 +137,11 @@ export function BoardPage() {
             onRetry={() => void board.refetch()}
             onShowMore={() => setHours(6)}
             destination={destination}
-            onClearDestination={() => setDestination(null)}
+            onClearDestination={() => {
+              setDestination(null);
+              // The clicked button disappears with the filtered view: keep keyboard users in place.
+              filterRef.current?.focus();
+            }}
             onOpen={(departure) =>
               eva !== undefined && setSelection({ eva, eventId: departure.event_id })
             }

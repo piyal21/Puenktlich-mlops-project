@@ -1,6 +1,6 @@
 import { TrainFront } from "lucide-react";
 import type { Departure, DeparturesResponse } from "../api/types";
-import { goingTo } from "../lib/destinations";
+import { goingTo, horizon } from "../lib/destinations";
 import { formatDate, minutesOld } from "../lib/format";
 import { Banner } from "./Banner";
 import { DepartureRow } from "./DepartureRow";
@@ -46,7 +46,6 @@ export function DepartureBoard({
   now = new Date(),
 }: Props) {
   if (isPending && !data) return <Skeleton />;
-  const horizon = hours === 1 ? "hour" : `${hours} hours`;
   const departures = data ? goingTo(data.departures, destination) : [];
   return (
     <div className="space-y-3">
@@ -88,20 +87,31 @@ export function DepartureBoard({
             <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-surface p-8 text-center">
               <TrainFront aria-hidden="true" className="size-8 text-muted" />
               <p>
-                No trains to <span lang="de">{destination}</span> in the next {horizon}
+                No trains to <span lang="de">{destination}</span> in the next {horizon(hours)}
               </p>
-              <button
-                type="button"
-                onClick={onClearDestination}
-                className={`${BUTTON} bg-primary text-primary-fg hover:bg-primary-hover`}
-              >
-                Show all trains
-              </button>
+              <div className="flex flex-wrap justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={onClearDestination}
+                  className={`${BUTTON} bg-primary text-primary-fg hover:bg-primary-hover`}
+                >
+                  Show all trains
+                </button>
+                {hours < 6 ? (
+                  <button
+                    type="button"
+                    onClick={onShowMore}
+                    className={`${BUTTON} border border-border bg-surface text-text`}
+                  >
+                    Show 6 hours
+                  </button>
+                ) : null}
+              </div>
             </div>
           ) : departures.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-surface p-8 text-center">
               <TrainFront aria-hidden="true" className="size-8 text-muted" />
-              <p>No departures in the next {horizon}</p>
+              <p>No departures in the next {horizon(hours)}</p>
               {hours < 6 ? (
                 <button
                   type="button"
@@ -113,7 +123,10 @@ export function DepartureBoard({
               ) : null}
             </div>
           ) : (
-            <ul aria-label={`Departures from ${data.station.name}`} className="space-y-2">
+            <ul
+              aria-label={`Departures from ${data.station.name}${destination === null ? "" : ` to ${destination}`}`}
+              className="space-y-2"
+            >
               {departures.map((departure) => (
                 <DepartureRow key={departure.event_id} departure={departure} onOpen={onOpen} />
               ))}
