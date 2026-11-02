@@ -162,7 +162,7 @@ class NotFoundError(DbDelayError): ...             # unknown station/event
 
 ## 8. Cost rules
 - Region `eu-north-1` only (fixed by the AWS account type, see ADR 0002). Every resource tagged (`project`, `env`, `managed_by`, `owner`).
-- Log groups always have retention (14 days default). ECR lifecycle keeps last 10 images. Bronze data expires after 30 days.
+- Log groups always have retention (14 days default). ECR lifecycle keeps last 3 images (owner OK 2026-10-31, cost). Bronze data expires after 30 days.
 - ≤ 10 custom CloudWatch metrics, ≤ 10 alarms.
 - Before adding any AWS resource, state its expected monthly cost in the PR description.
 

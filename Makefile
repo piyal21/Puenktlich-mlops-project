@@ -14,7 +14,8 @@ AWS_PROFILE ?= puenktlich
 AWS_REGION ?= eu-north-1
 TF_BOOT := infra/bootstrap
 TF_PROD := infra/envs/prod
-tf_out = $(shell terraform -chdir=$(TF_PROD) output -raw $(1))
+# Stop on an empty output: `docker login` without a registry would send the ECR token to Docker Hub.
+tf_out = $(or $(shell terraform -chdir=$(TF_PROD) output -raw $(1)),$(error terraform output $(1) is empty: run make tf-init, and aws login))
 # Pinned by digest (0.64.1); runs from Docker, nothing to install.
 TRIVY_IMAGE := aquasec/trivy@sha256:a8ca29078522f30393bdb34225e4c0994d38f37083be81a42da3a2a7e1488e9e
 IMAGE_TAG ?= $(shell git rev-parse --short=12 HEAD)
@@ -194,7 +195,9 @@ image-push: ## Build the API image (linux/amd64) and push it to ECR, tag = git S
 web-deploy: ## Build the frontend, sync it to the web bucket, invalidate CloudFront (AWS write: owner OK)
 	npm --prefix frontend ci
 	npm --prefix frontend run build
-	aws s3 sync frontend/dist s3://$(call tf_out,web_bucket) --delete
+	aws s3 sync frontend/dist/assets s3://$(call tf_out,web_bucket)/assets --delete --cache-control "public,max-age=31536000,immutable"
+	aws s3 sync frontend/dist s3://$(call tf_out,web_bucket) --delete --exclude "assets/*" --exclude index.html --cache-control "public,max-age=86400"
+	aws s3 cp frontend/dist/index.html s3://$(call tf_out,web_bucket)/index.html --cache-control no-cache
 	aws cloudfront create-invalidation --distribution-id $(call tf_out,cloudfront_distribution_id) --paths "/*"
 
 smoke-prod: ## Check the public site end to end through CloudFront (read-only)

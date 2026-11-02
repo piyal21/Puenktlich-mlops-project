@@ -131,6 +131,12 @@ def security_headers(fetch: Fetch, base: str) -> str | None:
     return f"missing {missing}" if missing else None
 
 
+def index_html_revalidates(fetch: Fetch, base: str) -> str | None:
+    """A stale cached index.html points at deleted hashed assets: a blank page after a deploy."""
+    value = fetch("GET", base + "/", None).headers.get("cache-control", "")
+    return None if "no-cache" in value else f"cache-control {value!r}"
+
+
 CHECKS: dict[str, Check] = {
     check.__name__: check
     for check in (
@@ -143,6 +149,7 @@ CHECKS: dict[str, Check] = {
         api_404_is_problem_json,
         deep_link_serves_spa,
         security_headers,
+        index_html_revalidates,
     )
 }
 CHECKS_ORDER = list(CHECKS)

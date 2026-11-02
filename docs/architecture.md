@@ -471,7 +471,7 @@ flowchart LR
   - `puenktlich-gh-plan` — read-only, trusted for `pull_request` on this repo.
   - `puenktlich-gh-deploy` — deploy permissions, trusted only for `repo:<owner>/puenktlich:environment:production`.
 - **Branch protection:** `main` requires CI to pass; no direct pushes.
-- **Images:** immutable tags (git SHA); ECR lifecycle keeps the last 10 images per repo; scan on push enabled.
+- **Images:** immutable tags (git SHA); ECR lifecycle keeps the last 3 images; scan on push enabled.
 - Model releases are **not** part of CD (see §6).
 
 ---
