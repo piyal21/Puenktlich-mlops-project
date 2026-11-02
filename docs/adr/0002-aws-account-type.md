@@ -59,4 +59,4 @@ Center), and AWS manages the organization's service control policies (SCPs). Wha
 - Deploys need the owner's 12 h `aws login`; there is no CD until the Phase 8 decision.
 - The site goes offline on 2027-04-25 unless the plan is upgraded or the stack moves (option C is a
   re-apply, because everything is in Terraform).
-- Cold starts are slower at 512 MB (measured: normal init 2.1–2.3 s; warm board ~1.8 s).
+- Cold starts are slower at 512 MB (measured: normal init 2.1–2.3 s; warm board 1.74–2.08 s; cold board 6.8–6.9 s). This misses the PRD targets at the origin (warm p95 < 300 ms, cold < 6 s); CloudFront cache hits (0.07–0.22 s) meet them. **Open owner decision:** accept for this account, or optimise scoring.

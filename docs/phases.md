@@ -157,8 +157,8 @@ Tasks (status 2026-10-31; account constraints in ADR 0002)
 - [x] Modules: `data_lake`, `ecr`, `lambda_image`, `http_api`, `schedules` (sample board), `web_cdn`, `ssm`, `observability` (SNS + email + 3 alarms), `budget` (imported).
 - [x] `envs/prod` with S3 backend (`use_lockfile = true`), default tags, no account id in committed files.
 - [x] Image pushed from the laptop (`make image-push`); API + sample-board Lambdas deployed; first champion published with `make publish-model` (release code, not by hand); SSM pointer = 1.
-- [ ] CloudFront: S3 origin (OAC) + `/api/*` → API Gateway; security headers; 60 s cache for board responses. *Code done; creation waits for AWS account verification (support case 2026-10-31).*
-- [ ] `terraform plan` shows **no changes** after apply (no drift). *After CloudFront.* DB API secrets move to Phase 7 (only ingestion needs them).
+- [x] CloudFront: S3 origin (OAC) + `/api/*` → API Gateway; security headers; 60 s cache for board responses. *Live 2026-11-02 after AWS verified the account.*
+- [x] `terraform plan` shows **no changes** after apply (no drift). DB API secrets move to Phase 7 (only ingestion needs them).
 
 Exit criteria
 - Public URL serves the UI; `/api/v1/health` returns the model version.

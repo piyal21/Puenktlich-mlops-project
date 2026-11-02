@@ -12,4 +12,5 @@ what actually happened.
 | 2 | Historical ETL with Airflow — HF backfill to bronze/silver, quarantine, quality reports | ✅ merged (`b8fac56`) | [phase-2-hf-backfill.md](phase-2-hf-backfill.md) |
 | 3 | Features & baseline — feature builder, gold snapshot, late-rate baseline + metrics | ✅ merged (`584f263`) | [phase-3-features-baseline.md](phase-3-features-baseline.md) |
 | 4 | Training, tracking, registry, gate — LightGBM + calibration, MLflow registry, promotion gate, release/rollback, Airflow DAG | ✅ merged (`d9ea889`) | [phase-4-training.md](phase-4-training.md) |
-| 5 | Local serving & UI — champion loader, FastAPI, sample board, Lambda/local image, React app | ✅ done | [phase-5-serving-ui.md](phase-5-serving-ui.md) |
+| 5 | Local serving & UI — champion loader, FastAPI, sample board, Lambda/local image, React app | ✅ merged (`e87c47f`) | [phase-5-serving-ui.md](phase-5-serving-ui.md) |
+| 6 | Cloud infrastructure — Terraform, public CloudFront site, API on Lambda, SSM model pointer, sample board every 15 min | ✅ deployed, branch `phase-6/cloud-infra` | [phase-6-cloud-infra.md](phase-6-cloud-infra.md) |
