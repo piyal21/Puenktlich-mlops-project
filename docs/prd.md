@@ -32,7 +32,7 @@ For the portfolio, the problem is a vehicle: it naturally needs **real ETL, larg
 5. Make the system **transparent**: a public *Model Health* page showing live accuracy, drift and model version.
 
 ### Non-goals (explicitly out of scope)
-- Door-to-door journey planning, connections, or routing (use DB Navigator for that).
+- Door-to-door journey planning, connections, or routing (use DB Navigator for that). The board's "Going to" filter (owner, 2026-11-02) only narrows one station's departures to a train's final stop; the risk still means leaving this station 6+ min late.
 - Predicting the exact number of delay minutes (v1 is binary risk).
 - Real-time streaming infrastructure (Kafka, Kinesis). Micro-batch every 15 min is enough.
 - Kubernetes, SageMaker, MWAA, or any always-on paid compute.
@@ -175,7 +175,7 @@ Errors use `application/problem+json` (RFC 9457). Details in `architecture.md`.
 
 ## 11. Constraints and assumptions
 
-- AWS account on the new free-tier model (credits, 6-month Free plan). Region **eu-central-1 (Frankfurt)**.
+- AWS account on the new free-tier model (credits, 6-month Free plan, ends 2027-04-25). Region **eu-north-1 (Stockholm)** — fixed by the account type ([ADR 0002](adr/0002-aws-account-type.md)).
 - Local machine: x86-64, 32 GB RAM, no GPU → CPU-friendly models; Lambda images built for `x86_64`.
 - Airflow and MLflow run **locally** in Docker (managed Airflow is too expensive). Retraining therefore runs when the local stack is up; this is a documented, conscious trade-off.
 - DB API free plan: 60 calls/min, no SLA. Ingestion must respect the limit and tolerate gaps.

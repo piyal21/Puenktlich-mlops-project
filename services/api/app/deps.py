@@ -11,7 +11,7 @@ from fastapi import Depends, Request
 from dbdelay.config import Settings, get_settings
 from dbdelay.data.stations import Station, load_stations
 from dbdelay.errors import NotFoundError
-from dbdelay.registry.pointer import ObjectStorePointer
+from dbdelay.registry.pointer import make_pointer
 from dbdelay.serving.board import BoardSource
 from dbdelay.serving.model_loader import ModelProvider
 from dbdelay.storage import ObjectStore, make_s3_client
@@ -40,7 +40,7 @@ class ServingDeps:
             settings=settings,
             stations=tuple(load_stations(settings.stations_file)),
             models=ModelProvider(
-                model_store, ObjectStorePointer(model_store), ttl_s=settings.model_pointer_ttl_s
+                model_store, make_pointer(settings, model_store), ttl_s=settings.model_pointer_ttl_s
             ),
             board=BoardSource(data_store, settings.board_key, ttl_s=settings.board_ttl_s),
         )

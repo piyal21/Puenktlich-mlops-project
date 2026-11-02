@@ -35,7 +35,7 @@ Tasks
 - [x] `Makefile` targets: `setup`, `up`, `down`, `logs`, `lint`, `typecheck`, `test`, `test-integration`, `fmt`.
 - [x] `docker-compose.yml` with **core** services: MinIO (+ bucket init), Postgres, MLflow server (Postgres backend, MinIO artifacts).
 - [x] `src/dbdelay/config.py` (pydantic-settings), `logging.py`, `errors.py`, `storage.py` (S3/MinIO with endpoint override) + unit tests.
-- [ ] ⏸ *Deferred until Phase 6 (owner decision).* AWS account safety (manual, one time): root MFA, IAM Identity Center admin user, region `eu-central-1`, **AWS Budgets alert at $1** (created manually now; Terraform later), billing alerts email.
+- [x] *(Done 2026-10-31, Phase 6.)* AWS account safety: new-experience account (no root user / Identity Center, ADR 0002), Builder ID MFA, region `eu-north-1`, **AWS Budgets alert at $1** (created manually, imported into Terraform), budget alert email.
 - [x] *(Done 2026-09-24.)* Register on DB API Marketplace, subscribe to **Timetables** (free plan), store keys in `.env` only.
 
 Exit criteria
@@ -152,13 +152,13 @@ You learn: model serving patterns, API design, containerizing for Lambda, fronte
 
 **Goal:** the API and website live on AWS, fully defined in Terraform.
 
-Tasks
-- [ ] `infra/bootstrap`: state bucket (versioned, encrypted), GitHub OIDC provider, `gh-plan` and `gh-deploy` roles (trust scoped to repo/environment). Apply once locally.
-- [ ] Modules: `data_lake`, `ecr`, `lambda_image`, `http_api`, `web_cdn`, `ssm`, `observability` (SNS + email), `budget`.
-- [ ] `envs/prod` with S3 backend (`use_lockfile = true`), default tags.
-- [ ] Push images manually once (later CI does it); deploy API Lambda; upload the first champion to `models/` and set the SSM pointer (via the release code, not by hand).
-- [ ] CloudFront: S3 origin (OAC) + `/api/*` → API Gateway; security headers; 60 s cache for board responses.
-- [ ] `terraform plan` shows **no changes** after apply (no drift). Store secrets with `scripts/set_secrets.sh`.
+Tasks (status 2026-10-31; account constraints in ADR 0002)
+- [x] `infra/bootstrap`: state bucket (versioned, encrypted, TLS-only), applied once locally. *GitHub OIDC provider + `gh-plan`/`gh-deploy` roles moved to the Phase 8 decision: an AWS-managed SCP denies them on this account.*
+- [x] Modules: `data_lake`, `ecr`, `lambda_image`, `http_api`, `schedules` (sample board), `web_cdn`, `ssm`, `observability` (SNS + email + 3 alarms), `budget` (imported).
+- [x] `envs/prod` with S3 backend (`use_lockfile = true`), default tags, no account id in committed files.
+- [x] Image pushed from the laptop (`make image-push`); API + sample-board Lambdas deployed; first champion published with `make publish-model` (release code, not by hand); SSM pointer = 1.
+- [x] CloudFront: S3 origin (OAC) + `/api/*` → API Gateway; security headers; 60 s cache for board responses. *Live 2026-11-02 after AWS verified the account.*
+- [x] `terraform plan` shows **no changes** after apply (no drift). DB API secrets move to Phase 7 (only ingestion needs them).
 
 Exit criteria
 - Public URL serves the UI; `/api/v1/health` returns the model version.
@@ -192,6 +192,7 @@ You learn: API-based ETL, rate limiting & retries, secrets management, scheduled
 **Goal:** every change is checked automatically, and merging to `main` deploys safely.
 
 Tasks
+- [ ] **First:** decide the GitHub → AWS route (ADR 0002: A laptop-only deploys · B Paid plan + advanced features · C new classic account); OIDC is SCP-denied on the current account.
 - [ ] `ci.yml`: Python (ruff, mypy, pytest + coverage), frontend (lint, typecheck, vitest, build), Terraform (fmt, validate, tflint), security (gitleaks, pip-audit, npm audit, trivy config), docker build for both images.
 - [ ] `infra-plan.yml`: on PRs touching `infra/`, `terraform plan` with `gh-plan` role, post as PR comment.
 - [ ] `cd.yml` (environment `production`): OIDC → build/push images (tag = SHA) → trivy image scan → `terraform apply` → frontend build + S3 sync + CloudFront invalidation → smoke test.

@@ -69,6 +69,10 @@ async def request_context(
     request.state.request_id = incoming if _REQUEST_ID.fullmatch(incoming) else uuid.uuid4().hex
     if request.method in _BODY_METHODS:
         length = request.headers.get("content-length")
+        if length is None and "aws.event" in request.scope:
+            # Behind API Gateway (Mangum) the whole body is already in the event, and the
+            # header may be missing: measure it instead of asking for it.
+            length = str(len(await request.body()))
         if length is None or not length.isdigit():
             return problem(request, LENGTH_REQUIRED, "Send the body with a Content-Length header.")
         if int(length) > MAX_BODY_BYTES:

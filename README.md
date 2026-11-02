@@ -64,7 +64,7 @@ flowchart LR
     MLF["MLflow 3<br/>tracking + registry"]
   end
 
-  subgraph AWS["Online plane · AWS eu-central-1"]
+  subgraph AWS["Online plane · AWS eu-north-1"]
     CF["CloudFront"]
     API["λ api<br/>FastAPI"]
     ING["λ ingest<br/>every 15 min"]
@@ -388,18 +388,23 @@ Training snapshot + baseline (Phase 3): `make baseline` builds `gold/training_se
 
 Serving & UI (Phase 5): `make up` → `make seed` (sample live board: a real silver day replayed onto today) → `make app-up` (API on :8000, web app on :5173, compose profile `app`). `make api-dev` runs the API on the host with reload; `make web-check` lints, type-checks and tests the frontend (`npm --prefix frontend ci` once). Without a champion the board still shows departures with "No forecast".
 
+Cloud (Phase 6): the same API and website on AWS `eu-north-1` (Lambda container image, API Gateway, CloudFront, S3, SSM model pointer), all in Terraform under `infra/` and deployed from the laptop (section 10). Until live ingestion (Phase 7) a scheduled Lambda refreshes a clearly labelled sample board every 15 minutes. Public URL: https://d37lj2a19ugjqm.cloudfront.net The AWS Free plan ends on 2027-04-25; after that the site goes offline unless the plan is upgraded ([ADR 0002](docs/adr/0002-aws-account-type.md)).
+
 Training (Phase 4): `make train` runs snapshot → LightGBM → calibration → evaluation → MLflow registry → gate → release in one process; `make train-dag` triggers the same steps as the Airflow DAG `training_pipeline`. A promoted model lands in MinIO `models/<version>/` (SHA-256 manifest) and `models/_pointer.json`; `make rollback` swaps the champion back to the previous version.
 
 ---
 
 ## 10. Deploy your own
 
-1. AWS account with MFA, region `eu-central-1`, budget alert.
-2. `cd infra/bootstrap && terraform init && terraform apply`: state bucket + GitHub OIDC roles.
-3. Set GitHub repository variables (`AWS_ACCOUNT_ID`, `AWS_REGION`, role ARNs) and create the `production` environment.
-4. `scripts/set_secrets.sh`: store DB API credentials in SSM.
-5. Merge to `main`: the CD workflow builds, scans, applies Terraform, deploys the frontend and runs smoke tests.
-6. Run `training_pipeline` locally with AWS credentials to release the first champion.
+Phase 6 deploys from the laptop (the current AWS account blocks GitHub OIDC, see [ADR 0002](docs/adr/0002-aws-account-type.md)). Every step that writes to AWS needs the owner's OK.
+
+1. AWS account with MFA, region `eu-north-1`, a $1 budget alert; `aws login --profile puenktlich` (12 h session). Tools: Terraform ≥ 1.10, AWS CLI v2, Docker, uv, Node.
+2. `make tf-bootstrap-plan` → `make tf-bootstrap-apply`: Terraform state bucket; writes the git-ignored `infra/envs/prod/backend.hcl`.
+3. Put `alert_email = "…"` into the git-ignored `infra/envs/prod/terraform.auto.tfvars`; `make tf-init` → `make tf-plan-stage-a` → `make tf-apply` (buckets, ECR, SSM pointer, budget import, alert topic). Confirm the SNS email.
+4. `make image-push` (tag = git SHA) and add `api_image_tag = "<tag>"` to the tfvars file.
+5. With the local stack up (`make up`): `make upload-sample-days` and `make publish-model` (copies the local champion, sets the SSM pointer).
+6. `make tf-plan` → `make tf-apply` (Lambdas, HTTP API, 15-min sample-board schedule, CloudFront, alarms).
+7. `make web-deploy` → `make smoke-prod`. Roll back a model with `make rollback-prod`.
 
 Full details: [`docs/architecture.md`](docs/architecture.md) and [`docs/runbook.md`](docs/runbook.md).
 

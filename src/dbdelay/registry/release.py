@@ -3,6 +3,7 @@
 import argparse
 import sys
 from collections.abc import Mapping, Sequence
+from typing import Protocol
 
 from dbdelay.config import get_settings
 from dbdelay.errors import ArtifactIntegrityError, DbDelayError, ModelNotAvailableError
@@ -14,7 +15,7 @@ from dbdelay.registry.artifacts import (
     read_bundle_files,
     write_bundle,
 )
-from dbdelay.registry.pointer import ModelPointer, ObjectStorePointer, PointerState
+from dbdelay.registry.pointer import ModelPointer, PointerState, make_pointer
 from dbdelay.storage import ObjectStore, make_s3_client
 from dbdelay.training.config import load_training_config
 from dbdelay.training.tracking import MlflowTracker, Tracker
@@ -23,10 +24,16 @@ CHAMPION = "champion"
 CHALLENGER = "challenger"
 
 
+class AliasTracker(Protocol):
+    """The one tracker call a release needs (`Tracker` satisfies it)."""
+
+    def set_alias(self, model_name: str, alias: str, version: str) -> None: ...
+
+
 def release_version(  # noqa: PLR0913 - store, pointer, tracker + bundle + root
     store: ObjectStore,
     pointer: ModelPointer,
-    tracker: Tracker,
+    tracker: AliasTracker,
     *,
     manifest: Manifest,
     files: Mapping[str, bytes],
@@ -60,7 +67,7 @@ def release_version(  # noqa: PLR0913 - store, pointer, tracker + bundle + root
 def rollback(
     store: ObjectStore,
     pointer: ModelPointer,
-    tracker: Tracker,
+    tracker: AliasTracker,
     *,
     model_name: str,
     root: str = "",
@@ -74,6 +81,12 @@ def rollback(
     current = pointer.get()
     if current is None or current.previous_version is None:
         raise ModelNotAvailableError("no previous model version to roll back to")
+    if current.previous_version == current.champion_version:
+        # An earlier rollback wrote `previous` but failed on `champion` (SSM has no transaction).
+        raise ModelNotAvailableError(
+            f"pointer is half-written: champion and previous are both {current.champion_version}; "
+            "check the versions in models/ and repair the pointer"
+        )
     load_bundle(store, current.previous_version, root)
     state = pointer.set(current.previous_version, current.champion_version)
     tracker.set_alias(model_name, CHAMPION, state.champion_version)
@@ -90,7 +103,7 @@ def rollback_main(argv: Sequence[str] | None = None, *, tracker: Tracker | None 
     try:
         state = rollback(
             store,
-            ObjectStorePointer(store),
+            make_pointer(settings, store),
             tracker or MlflowTracker(settings.mlflow_tracking_uri),
             model_name=cfg.registry.model_name,
         )

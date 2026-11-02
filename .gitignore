@@ -31,12 +31,15 @@ coverage.xml
 node_modules/
 frontend/dist/
 
-# Terraform (later)
+# Terraform (Phase 6). Lock files ARE committed; backend.hcl and *.auto.tfvars hold
+# account-specific values and stay local.
 .terraform/
 *.tfstate
 *.tfstate.*
 *.tfplan
 crash.log
+infra/**/backend.hcl
+infra/**/*.auto.tfvars
 
 # Editors / OS
 .vscode/

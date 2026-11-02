@@ -3,6 +3,78 @@
 One entry per phase branch (owner rule, from Phase 2 on). Phases 0–1 are described in [`Phases/`](Phases/).
 Only measured numbers; anything not measured is `TBD`.
 
+## Phase 6 follow-up — "Going to" filter (`phase-6/destination-filter`)
+
+**Built**
+- Board dropdown "Going to (final stop of the train)": lists the board's final stops A–Z, shows only trains to the chosen
+  one; resets on station change; kept across 1/3/6 h, with "Show all trains" when none match. Frontend only.
+
+**Key decisions**
+- Owner chose this over a true A→B prediction, which would need a new label and retraining (2026-11-02). Routing stays out of scope.
+- Dropdown, not typed search: only places with trains, works on phones and screen readers. No API, model or dependency change.
+
+**Tested**
+- `make web-check`: 66 passed (19 new), lint and types clean. Live: dropdown lists real final stops, 0 CSP violations, `make smoke-prod` 10/10.
+- Independent review: 0 Critical; fixed test-first: focus lost after "Show all trains", results not announced to screen readers, blank
+  destinations in real data (81 of 409,119 rows in 2026-08), untested paths. The dropdown stays mounted; a filtered empty result also offers 6 hours.
+
+**Known gaps / open items**
+- Final stop only: a train passing through the chosen station isn't listed. Matching all stops needs the stop list from Phase 7.
+- Deferred minors: `DepartureRow`/`DepartureDetail` show an empty destination for a blank name; no `color-scheme` for native controls in dark mode;
+  input borders below 3:1 (site-wide token); detail sheet focus if a live refetch changes the open train's destination (re-check in Phase 7);
+  `design.md` has no entry for the filter; `onClearDestination` is optional. Picking an option was not exercised in a real browser.
+
+**Docs touched**
+- `docs/prd.md` (non-goal note), `CHANGELOG.md`, `Phases/phase-6-cloud-infra.md`, `CLAUDE.md`.
+
+## Phase 6 — Cloud infrastructure (`phase-6/cloud-infra`)
+
+**Built**
+- Live on AWS `eu-north-1`: https://d37lj2a19ugjqm.cloudfront.net (React site + FastAPI on Lambda, champion v1, sample board).
+- `infra/`: `bootstrap` (state bucket) and `envs/prod` with modules `data_lake`, `ecr`, `ssm`, `budget` (imported), `observability`
+  (SNS + 3 alarms), `lambda_image`, `http_api`, `schedules`, `web_cdn` (CloudFront + OAC, SPA rewrite function, security headers,
+  60 s board cache).
+- `dbdelay.registry.pointer`: `SsmPointer`, `make_pointer`. `dbdelay.registry.publish`: `make publish-model` (local champion → S3 →
+  SSM), `make rollback-prod`. `dbdelay.aws_session`: one-line login hint and refusals for the prod CLIs.
+- `dbdelay.serving.samples` + `services/api/seed_handler.py`: 9 real silver days replayed by a Lambda every 15 min.
+- `services/api/app/errors.py`: behind Lambda a POST without `Content-Length` is measured instead of answered with 411.
+- Laptop deploy targets: `tf-*`, `image-push`, `upload-sample-days`, `web-deploy` (no-cache `index.html`, immutable assets),
+  `smoke-prod`, `aws-check`, `aws-py-profile`, `tf-scan` (Trivy from Docker).
+
+**Key decisions** (evidence in [ADR 0002](docs/adr/0002-aws-account-type.md))
+- The account type fixes the region to `eu-north-1` and denies GitHub OIDC, so `rules.md` was changed (owner, 2026-10-31) and
+  deploys run from the laptop; long-lived keys stay forbidden; the Phase 8 route is the owner's decision.
+- Lambdas at 512 MB (account quota), no reserved concurrency (limit 5). Sample board every 15 min, because a board is stale after 20.
+- `publish-model` takes no version argument: only the gate's choice can reach prod. ECR keeps 3 images (owner OK, cost).
+- Budget imported, not re-created. Saved plans are applied exactly as reviewed. No new Python or npm dependencies.
+- Trivy findings accepted with reasons: customer-managed KMS, access logs, WAF, default-certificate TLS policy, X-Ray, SNS encryption.
+
+**Tested**
+- `make check`: 452 passed, coverage 98 %, lint and strict types clean. `make web-check`: 47 passed. `make test-integration`: 8 passed.
+  `uv run pre-commit run --all-files`: clean.
+- `make tf-fmt tf-validate`: valid. `make tf-scan`: exit 0. `make tf-plan` after all applies: "No changes".
+- `make smoke-prod` through CloudFront: 10/10. Headless Chromium: 0 CSP violations after the `data:` font fix; board and `/api/docs` render.
+- Sample board on Sunday 2026-11-01: 0 errors, about 24 runs per 6 h. `make rollback-prod` with only v1: refused, SSM unchanged.
+- Measured at 512 MB: CloudFront cache hit 0.07–0.22 s, miss 3.12 s; warm board at origin 1.74–2.08 s; cold board 6.8–6.9 s; warm health
+  0.16 s; normal init 2.1–2.3 s; first-ever start 17.6 s; peak memory 303 MB (API), 366 MB (sample board); image 386.8 MB compressed.
+- Final whole-branch review (independent, opus): 0 Critical. Sunday-failure suspicion refuted with live metrics. Fixed test-first:
+  credential errors as tracebacks, half-failed rollback reporting success. Re-graded and fixed: ECR token could go to Docker Hub on an
+  empty Terraform output; blank-page risk from uncached-header `index.html`.
+
+**Known gaps / open items**
+- ⚠️ **PRD latency target missed at the origin:** warm `/departures` p95 target < 300 ms vs. 1.74–2.08 s measured; cold start target < 6 s
+  vs. 6.8–6.9 s. CloudFront cache hits meet it. Owner decision open (accept for this account, or optimise scoring).
+- The SNS alarm subscription was still `PendingConfirmation` on 2026-11-02 (owner must click the email link).
+- Free plan ends 2027-04-25. Real AWS cost: `TBD` (Cost Explorer after a week). Sample data only until Phase 7.
+- Deferred review minors: clean-tree guard ignores untracked files and `web-deploy` has none; viewer `X-Request-ID` cached 60 s on boards;
+  Lambda async retries still apply to the schedule; API throttle (10 rps) above uncached capacity (about 2.8 rps) and the execute-api URL
+  bypasses the cache; `smoke_prod` hard-codes model version `1`; publish CLI imports MLflow (extra log line, about 4 s); make ≥ 4.4 needed
+  for target variables in `$(shell)`; `enable_alarms` is redundant.
+
+**Docs touched**
+- `docs/adr/0002-aws-account-type.md` (new), `docs/rules.md` (region, OIDC note, ECR images), `docs/architecture.md`, `docs/phases.md`,
+  `docs/prd.md` (constraints), `README.md`, `.env.example`, `CLAUDE.md`, `Phases/phase-6-cloud-infra.md`, `Phases/README.md`.
+
 ## Phase 5 — Local serving & UI (`phase-5/serving-ui`)
 
 **Built**

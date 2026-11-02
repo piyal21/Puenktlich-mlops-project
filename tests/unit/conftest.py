@@ -22,7 +22,7 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
     monkeypatch.setenv("AWS_SESSION_TOKEN", "testing")
-    monkeypatch.setenv("AWS_DEFAULT_REGION", "eu-central-1")
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "eu-north-1")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -34,7 +34,7 @@ def s3_store() -> Iterator[ObjectStore]:
     with mock_aws():
         client = make_s3_client(Settings(_env_file=None))  # type: ignore[call-arg]
         client.create_bucket(
-            Bucket=TEST_BUCKET, CreateBucketConfiguration={"LocationConstraint": "eu-central-1"}
+            Bucket=TEST_BUCKET, CreateBucketConfiguration={"LocationConstraint": "eu-north-1"}
         )
         yield ObjectStore(client, TEST_BUCKET)
 

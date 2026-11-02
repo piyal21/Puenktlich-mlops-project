@@ -32,7 +32,7 @@ def store() -> Iterator[ObjectStore]:
     with mock_aws():
         client: S3Client = make_s3_client(Settings(_env_file=None))  # type: ignore[call-arg]
         client.create_bucket(
-            Bucket=BUCKET, CreateBucketConfiguration={"LocationConstraint": "eu-central-1"}
+            Bucket=BUCKET, CreateBucketConfiguration={"LocationConstraint": "eu-north-1"}
         )
         yield ObjectStore(client, BUCKET)
 
