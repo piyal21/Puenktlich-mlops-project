@@ -51,7 +51,7 @@ resource "aws_cloudwatch_metric_alarm" "api_throttles" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "sample_board_errors" {
-  count               = var.enable_alarms ? 1 : 0
+  count               = var.enable_alarms && var.board_mode == "sample" ? 1 : 0
   alarm_name          = "puenktlich-sample-board-errors"
   alarm_description   = "Sample board refresh failed twice in a row (board goes stale)."
   namespace           = "AWS/Lambda"
@@ -61,6 +61,77 @@ resource "aws_cloudwatch_metric_alarm" "sample_board_errors" {
   period              = 900
   evaluation_periods  = 2
   datapoints_to_alarm = 2
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  ok_actions          = [aws_sns_topic.alerts.arn]
+}
+
+# --- Phase 7: live pipeline (EMF metrics in namespace Puenktlich, dimension `service`) ----------
+
+resource "aws_cloudwatch_metric_alarm" "ingestion_stopped" {
+  count               = var.enable_alarms ? 1 : 0
+  alarm_name          = "puenktlich-ingestion-stopped"
+  alarm_description   = "No departures ingested for 60 minutes (DB API, keys or the ingest Lambda)."
+  namespace           = "Puenktlich"
+  metric_name         = "EventsIngested"
+  dimensions          = { service = "ingest" }
+  statistic           = "Sum"
+  period              = 3600
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "LessThanOrEqualToThreshold"
+  treat_missing_data  = "breaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  ok_actions          = [aws_sns_topic.alerts.arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "ingest_errors" {
+  count               = var.enable_alarms ? 1 : 0
+  alarm_name          = "puenktlich-ingest-errors"
+  alarm_description   = "Live ingest failed in two consecutive 15-minute runs."
+  namespace           = "AWS/Lambda"
+  metric_name         = "Errors"
+  dimensions          = { FunctionName = var.ingest_function_name }
+  statistic           = "Sum"
+  period              = 900
+  evaluation_periods  = 2
+  datapoints_to_alarm = 2
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  ok_actions          = [aws_sns_topic.alerts.arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "etl_errors" {
+  count               = var.enable_alarms ? 1 : 0
+  alarm_name          = "puenktlich-etl-errors"
+  alarm_description   = "Nightly live ETL failed (yesterday has no live silver)."
+  namespace           = "AWS/Lambda"
+  metric_name         = "Errors"
+  dimensions          = { FunctionName = var.etl_function_name }
+  statistic           = "Sum"
+  period              = 86400
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  ok_actions          = [aws_sns_topic.alerts.arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "empty_stations" {
+  count               = var.enable_alarms ? 1 : 0
+  alarm_name          = "puenktlich-empty-stations"
+  alarm_description   = "A station had no departures yesterday (EVA drift or a feed gap)."
+  namespace           = "Puenktlich"
+  metric_name         = "EmptyStations"
+  dimensions          = { service = "etl_daily" }
+  statistic           = "Maximum"
+  period              = 86400
+  evaluation_periods  = 1
   threshold           = 0
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"

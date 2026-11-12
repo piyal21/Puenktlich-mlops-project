@@ -25,3 +25,19 @@ variable "enable_alarms" {
   type        = bool
   default     = false
 }
+
+variable "ingest_function_name" {
+  type    = string
+  default = null
+}
+
+variable "etl_function_name" {
+  type    = string
+  default = null
+}
+
+variable "board_mode" {
+  description = "Sample-board alarm only while the sample board is scheduled."
+  type        = string
+  default     = "sample"
+}

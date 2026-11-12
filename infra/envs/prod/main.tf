@@ -1,9 +1,12 @@
 data "aws_caller_identity" "current" {}
 
 locals {
-  image_uri = "${module.ecr.repository_url}:${var.api_image_tag}"
-  board_key = "live/boards/latest.json.gz"
-  data_arn  = module.data_lake.data_bucket_arn
+  image_uri      = "${module.ecr.repository_url}:${var.api_image_tag}"
+  jobs_image_uri = "${module.ecr_jobs.repository_url}:${var.jobs_image_tag}"
+  board_key      = "live/boards/latest.json.gz"
+  # Until the owner switches board_mode to "live", ingest writes a candidate board nobody serves.
+  ingest_board_key = var.board_mode == "live" ? local.board_key : "live/boards/candidate.json.gz"
+  data_arn         = module.data_lake.data_bucket_arn
 }
 
 # --- Stage A: storage, registry, pointer, budget, alert topic -----------------------------
@@ -15,6 +18,11 @@ module "data_lake" {
 
 module "ecr" {
   source = "../../modules/ecr"
+}
+
+module "ecr_jobs" {
+  source = "../../modules/ecr"
+  name   = "puenktlich/jobs"
 }
 
 module "ssm" {
@@ -39,6 +47,9 @@ module "observability" {
   api_id                     = module.http_api.api_id
   api_function_name          = module.api.function_name
   sample_board_function_name = module.sample_board.function_name
+  ingest_function_name       = module.ingest.function_name
+  etl_function_name          = module.etl_daily.function_name
+  board_mode                 = var.board_mode
 }
 
 # --- Compute and edge ----------------------------------------------------------------------
@@ -136,11 +147,92 @@ module "http_api" {
 
 module "schedules" {
   source                    = "../../modules/schedules"
+  board_mode                = var.board_mode
   sample_board_function_arn = module.sample_board.function_arn
+  ingest_function_arn       = module.ingest.function_arn
+  etl_function_arn          = module.etl_daily.function_arn
 }
 
 module "web_cdn" {
   source       = "../../modules/web_cdn"
   name_suffix  = data.aws_caller_identity.current.account_id
   api_endpoint = module.http_api.api_endpoint
+}
+
+# --- Phase 7: live pipeline (jobs image) -----------------------------------------------------
+
+data "aws_iam_policy_document" "ingest" {
+  statement {
+    sid     = "BronzePlansBoard"
+    actions = ["s3:GetObject", "s3:PutObject"]
+    resources = [
+      "${local.data_arn}/bronze/timetables/*",
+      "${local.data_arn}/live/plans/*",
+      "${local.data_arn}/live/boards/*",
+    ]
+  }
+  statement {
+    sid       = "ReadDbApiKeys"
+    actions   = ["ssm:GetParameter", "ssm:GetParameters"]
+    resources = module.ssm.db_api_param_arns
+  }
+}
+
+module "ingest" {
+  source      = "../../modules/lambda_image"
+  name        = "ingest"
+  image_uri   = local.jobs_image_uri
+  command     = ["ingest_handler.handler"]
+  memory_mb   = 512 # account quota: max 512 MB
+  timeout_s   = 300
+  policy_json = data.aws_iam_policy_document.ingest.json
+  environment = {
+    APP_ENV                = "prod"
+    LOG_LEVEL              = "INFO"
+    DATA_BUCKET            = module.data_lake.data_bucket
+    BOARD_KEY              = local.ingest_board_key
+    DB_API_CLIENT_ID_PARAM = module.ssm.db_api_client_id_param
+    DB_API_KEY_PARAM       = module.ssm.db_api_key_param
+  }
+}
+
+data "aws_iam_policy_document" "etl_daily" {
+  statement {
+    sid       = "ListBronze"
+    actions   = ["s3:ListBucket"]
+    resources = [local.data_arn]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["bronze/timetables/*"]
+    }
+  }
+  statement {
+    sid       = "ReadBronze"
+    actions   = ["s3:GetObject"]
+    resources = ["${local.data_arn}/bronze/timetables/*"]
+  }
+  statement {
+    sid     = "WriteLiveSilver"
+    actions = ["s3:PutObject"]
+    resources = [
+      "${local.data_arn}/silver/departures/source=live/*",
+      "${local.data_arn}/silver/_quality/source=live/*",
+    ]
+  }
+}
+
+module "etl_daily" {
+  source      = "../../modules/lambda_image"
+  name        = "etl-daily"
+  image_uri   = local.jobs_image_uri
+  command     = ["etl_handler.handler"]
+  memory_mb   = 512 # account quota: max 512 MB
+  timeout_s   = 600
+  policy_json = data.aws_iam_policy_document.etl_daily.json
+  environment = {
+    APP_ENV     = "prod"
+    LOG_LEVEL   = "INFO"
+    DATA_BUCKET = module.data_lake.data_bucket
+  }
 }

@@ -21,14 +21,15 @@ TRIVY_IMAGE := aquasec/trivy@sha256:a8ca29078522f30393bdb34225e4c0994d38f37083be
 IMAGE_TAG ?= $(shell git rev-parse --short=12 HEAD)
 ECR_REPO = $(call tf_out,ecr_repository_url)
 ECR_REGISTRY = $(firstword $(subst /, ,$(ECR_REPO)))
-AWS_TARGETS := publish-model rollback-prod upload-sample-days tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply image-push web-deploy smoke-prod
+ECR_JOBS_REPO = $(call tf_out,ecr_jobs_repository_url)
+AWS_TARGETS := publish-model rollback-prod upload-sample-days put-db-api-secrets jobs-image-push tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply image-push web-deploy smoke-prod
 $(AWS_TARGETS) aws-check: export AWS_PROFILE := $(AWS_PROFILE)
 $(AWS_TARGETS) aws-check: export AWS_REGION := $(AWS_REGION)
 # Git Bash would rewrite "/*" and docker -v paths into Windows paths.
 $(AWS_TARGETS) tf-scan: export MSYS_NO_PATHCONV := 1
 # boto3 cannot read `aws login` sessions without botocore[crt]; the Python CLIs use a profile
 # whose credential_process asks the AWS CLI for them instead (no extra dependency).
-PY_AWS_TARGETS := publish-model rollback-prod upload-sample-days
+PY_AWS_TARGETS := publish-model rollback-prod upload-sample-days put-db-api-secrets
 AWS_PY_PROFILE := $(AWS_PROFILE)-py
 $(PY_AWS_TARGETS): export AWS_PROFILE := $(AWS_PY_PROFILE)
 $(PY_AWS_TARGETS): aws-py-profile
@@ -41,7 +42,7 @@ DOCKER_ECR_CONFIG := $(subst \,/,$(or $(HOME),$(USERPROFILE)))/.docker-puenktlic
 # Fail fast with one clear line when the 12 h `aws login` session is gone.
 $(AWS_TARGETS): aws-check
 
-.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed parity-check ingest-local etl-live-local jobs-requirements jobs-image-build app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply aws-check aws-py-profile image-push web-deploy smoke-prod
+.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed parity-check ingest-local etl-live-local jobs-requirements jobs-image-build jobs-image-push put-db-api-secrets app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply aws-check aws-py-profile image-push web-deploy smoke-prod
 
 help: ## Show available targets
 	@uv run python -c "import re; [print(f'{m[0]:<18} {m[1]}') for m in re.findall(r'^([a-z-]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -181,12 +182,12 @@ tf-bootstrap-apply: ## Apply the saved bootstrap plan and write envs/prod/backen
 
 # envs/prod. Needs backend.hcl (from tf-bootstrap-apply) and TF_VAR_alert_email or a
 # git-ignored terraform.auto.tfvars. Plans are saved and applied exactly as reviewed.
-STAGE_A := -target=module.data_lake -target=module.ecr -target=module.ssm -target=module.budget -target=module.observability.aws_sns_topic.alerts -target=module.observability.aws_sns_topic_subscription.email
+STAGE_A := -target=module.data_lake -target=module.ecr -target=module.ecr_jobs -target=module.ssm -target=module.budget -target=module.observability.aws_sns_topic.alerts -target=module.observability.aws_sns_topic_subscription.email
 
 tf-init: ## Initialise envs/prod against the remote state bucket
 	terraform -chdir=$(TF_PROD) init -input=false -reconfigure -backend-config=backend.hcl
 
-tf-plan-stage-a: ## Plan stage A only (buckets, ECR, SSM, budget import, alert topic); saves prod.tfplan
+tf-plan-stage-a: ## Plan stage A only (buckets, ECR repos, SSM incl. DB API key params, budget, alert topic); saves prod.tfplan
 	terraform -chdir=$(TF_PROD) plan -input=false $(STAGE_A) -out=prod.tfplan
 
 tf-plan: ## Plan the whole prod stack (read-only); saves prod.tfplan
@@ -207,6 +208,17 @@ image-push: ## Build the API image (linux/amd64) and push it to ECR, tag = git S
 	docker buildx build --platform linux/amd64 --target lambda --provenance=false -f services/api/Dockerfile -t $(ECR_REPO):$(IMAGE_TAG) --load .
 	docker --config $(DOCKER_ECR_CONFIG) push $(ECR_REPO):$(IMAGE_TAG)
 	@echo pushed $(ECR_REPO):$(IMAGE_TAG) - next: set api_image_tag in infra/envs/prod/terraform.auto.tfvars, then make tf-plan
+
+jobs-image-push: ## Build the jobs image (linux/amd64) and push it to ECR, tag = git SHA (AWS write: owner OK)
+	git diff --quiet HEAD
+	uv run python -c "import json, os, sys; d = sys.argv[1]; os.makedirs(d, exist_ok=True); p = os.path.join(d, 'config.json'); os.path.exists(p) or json.dump({'auths': {sys.argv[2]: {}}}, open(p, 'w'))" $(DOCKER_ECR_CONFIG) $(ECR_REGISTRY)
+	aws ecr get-login-password --region $(AWS_REGION) | docker --config $(DOCKER_ECR_CONFIG) login --username AWS --password-stdin $(ECR_REGISTRY)
+	docker buildx build --platform linux/amd64 --provenance=false -f services/jobs/Dockerfile -t $(ECR_JOBS_REPO):$(IMAGE_TAG) --load .
+	docker --config $(DOCKER_ECR_CONFIG) push $(ECR_JOBS_REPO):$(IMAGE_TAG)
+	@echo pushed $(ECR_JOBS_REPO):$(IMAGE_TAG) - next: set jobs_image_tag in infra/envs/prod/terraform.auto.tfvars, then make tf-plan
+
+put-db-api-secrets: ## Copy the DB API keys from .env into the SSM SecureString parameters (AWS write: owner OK)
+	uv run python scripts/put_db_api_secrets.py --client-id-param $(call tf_out,db_api_client_id_param) --key-param $(call tf_out,db_api_key_param) --region $(AWS_REGION)
 
 web-deploy: ## Build the frontend, sync it to the web bucket, invalidate CloudFront (AWS write: owner OK)
 	npm --prefix frontend ci

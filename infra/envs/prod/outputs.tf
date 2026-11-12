@@ -45,3 +45,23 @@ output "api_function_name" {
 output "sample_board_function_name" {
   value = module.sample_board.function_name
 }
+
+output "ecr_jobs_repository_url" {
+  value = module.ecr_jobs.repository_url
+}
+
+output "db_api_client_id_param" {
+  value = module.ssm.db_api_client_id_param
+}
+
+output "db_api_key_param" {
+  value = module.ssm.db_api_key_param
+}
+
+output "ingest_function_name" {
+  value = module.ingest.function_name
+}
+
+output "etl_function_name" {
+  value = module.etl_daily.function_name
+}
