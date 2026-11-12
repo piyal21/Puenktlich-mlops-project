@@ -53,9 +53,16 @@ class Settings(BaseSettings):
     # JSON list, e.g. CORS_ORIGINS='["http://localhost:5173"]'; empty in prod (same origin).
     cors_origins: list[str] = []
 
-    # DB Timetables API credentials (only needed by ingestion).
+    # DB Timetables API credentials (only needed by ingestion): values locally (.env), or the
+    # names of SSM SecureString parameters in prod (Phase 7).
     db_api_client_id: SecretStr | None = None
     db_api_key: SecretStr | None = None
+    db_api_client_id_param: str | None = None
+    db_api_key_param: str | None = None
+    db_api_base_url: str = "https://apis.deutschebahn.com/db-api-marketplace/apis/timetables/v1"
+    # Live ingestion (Phase 7): plan calls per 15-min run; client-side limit (DB free plan: 60).
+    plan_call_budget: int = Field(default=70, ge=0)
+    api_calls_per_min: int = Field(default=50, gt=0, le=60)
 
     mlflow_tracking_uri: str = "http://localhost:5000"
 

@@ -34,6 +34,12 @@ api = [
     "lightgbm>=4.7.0",
     "mangum>=0.22.0",
 ]
+# Jobs image (Phase 7): DB Timetables API client (httpx + tenacity) and safe XML parsing.
+jobs = [
+    "defusedxml>=0.7.1",
+    "httpx>=0.28.1",
+    "tenacity>=9",
+]
 
 [dependency-groups]
 # Local API server (compose `api` service, `make api-dev`); not in the Lambda image.
@@ -42,7 +48,8 @@ api-local = [
 ]
 dev = [
     { include-group = "api-local" },
-    "boto3-stubs[s3]>=1.43",
+    "boto3-stubs[s3,ssm]>=1.43",
+    "defusedxml>=0.7.1",
     "fastapi>=0.142.2",
     "httpx>=0.28.1",
     "huggingface-hub>=0.30,<2",
@@ -59,6 +66,8 @@ dev = [
     "pytest-cov>=7.1",
     "ruff>=0.16",
     "scikit-learn>=1.9.1",
+    "tenacity>=9",
+    "types-defusedxml>=0.7.0.20260504",
     "types-pyyaml>=6.0.12.20260906",
 ]
 
