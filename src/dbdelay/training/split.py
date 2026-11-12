@@ -6,7 +6,7 @@ from calendar import monthrange
 from collections.abc import Sequence
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import duckdb
 import numpy as np
@@ -14,7 +14,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict
 
-from dbdelay.data.quality import QualityReport
+from dbdelay.data.quality import QualityReport, StationQuality
 from dbdelay.data.silver import (
     SILVER_ARROW_SCHEMA,
     SILVER_COLUMNS,
@@ -31,6 +31,16 @@ SPLITS: tuple[str, ...] = ("train", "valid", "test")
 SILVER_PREFIX = "silver/departures/source=hf/"
 SNAPSHOT_FILE = "snapshot.json"
 _SPLIT_CONFIG_KEYS = ("window_months", "end_date", "test_days", "valid_days", "exclude_data_gaps")
+
+
+class GapReport(Protocol):
+    """What `gap_masks` reads: HF monthly and live daily quality reports both provide it."""
+
+    @property
+    def low_volume_hours(self) -> Sequence[str]: ...
+
+    @property
+    def stations(self) -> Sequence[StationQuality]: ...
 
 
 class Windows(BaseModel):
@@ -80,7 +90,7 @@ def compute_windows(end: date, cfg: TrainingConfig) -> Windows:
 
 
 def gap_masks(
-    df: pd.DataFrame, reports: Sequence[QualityReport]
+    df: pd.DataFrame, reports: Sequence[GapReport]
 ) -> tuple["pd.Series[bool]", "pd.Series[bool]"]:
     """Rows in a flagged low-volume local hour, and rows on a station's flagged UTC day."""
     planned = df["planned_departure_utc"]
