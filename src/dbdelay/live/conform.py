@@ -71,6 +71,26 @@ class StopMerger:
         return {k: e for k, (e, _) in self._changes.items() if k not in known}
 
 
+@dataclass(frozen=True)
+class StopOutcome:
+    planned: datetime
+    changed: datetime  # ``planned`` when no change was reported (ADR 0001)
+    delay_min: int | None  # None when cancelled
+    cancelled: bool
+
+
+def stop_outcome(stop: MergedStop) -> StopOutcome | None:
+    """What happened to a stop per its latest observations; ``None`` without a planned time."""
+    plan, change = stop.plan, stop.change
+    planned = plan.planned_utc
+    if planned is None:
+        return None
+    cancelled = change.cancelled if change is not None else plan.cancelled
+    changed = (change.changed_utc if change is not None else None) or planned
+    delay = None if cancelled else round((changed - planned).total_seconds() / 60)
+    return StopOutcome(planned, changed, delay, cancelled)
+
+
 def final_destination(stop: MergedStop) -> str | None:
     """Last planned stop (HF rule; also what the model was trained on)."""
     path = stop.plan.planned_path
@@ -108,16 +128,12 @@ def _empty_silver() -> pd.DataFrame:
     )
 
 
-def _row(stop: MergedStop, names: Mapping[str, str]) -> dict[str, object]:
-    plan, change = stop.plan, stop.change
-    planned = plan.planned_utc
-    assert planned is not None  # noqa: S101 - filtered by the caller
-    cancelled = change.cancelled if change is not None else plan.cancelled
-    changed = (change.changed_utc if change is not None else None) or planned
-    delay = None if cancelled else round((changed - planned).total_seconds() / 60)
+def _row(stop: MergedStop, outcome: StopOutcome, names: Mapping[str, str]) -> dict[str, object]:
+    plan = stop.plan
     seen = [t for t in (stop.plan_seen_at, stop.change_seen_at) if t is not None]
+    delay = outcome.delay_min
     return {
-        "event_id": make_event_id(plan.eva, plan.ride_id, pd.Timestamp(planned)),
+        "event_id": make_event_id(plan.eva, plan.ride_id, pd.Timestamp(outcome.planned)),
         "eva": plan.eva,
         "station_name": names[plan.eva],
         "ride_id": plan.ride_id,
@@ -126,10 +142,10 @@ def _row(stop: MergedStop, names: Mapping[str, str]) -> dict[str, object]:
         "train_number": plan.train_number,
         "line_number": plan.line_number,
         "final_destination": final_destination(stop),
-        "planned_departure_utc": planned,
-        "changed_departure_utc": changed,
+        "planned_departure_utc": outcome.planned,
+        "changed_departure_utc": outcome.changed,
         "delay_min": delay,
-        "is_cancelled": cancelled,
+        "is_cancelled": outcome.cancelled,
         "is_late": None if delay is None else delay >= LATE_THRESHOLD_MIN,
         "source": "live",
         "ingested_at": max(seen),
@@ -149,10 +165,11 @@ def to_silver(
     rows = []
     for stop in stops.values():
         plan = stop.plan
-        if plan.planned_utc is None:
+        outcome = stop_outcome(stop)
+        if outcome is None:
             drops["no_planned_time"] += 1
             continue
-        if plan.planned_utc.date() != day:
+        if outcome.planned.date() != day:
             continue
         if plan.eva not in names:
             drops["not_supported_station"] += 1
@@ -160,7 +177,7 @@ def to_silver(
         if plan.train_type is None:
             drops["no_train_type"] += 1
             continue
-        rows.append(_row(stop, names))
+        rows.append(_row(stop, outcome, names))
     if not rows:
         return _empty_silver(), drops
 

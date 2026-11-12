@@ -39,6 +39,8 @@ class BoardDeparture(BaseModel):
     delay_min: int | None = None
     is_cancelled: bool
     platform: str | None = None
+    # Phase 7 (additive): stations after this one, for "Going to"; empty for sample boards.
+    via: tuple[str, ...] = ()
 
     @field_validator("planned_departure_utc", "changed_departure_utc")
     @classmethod

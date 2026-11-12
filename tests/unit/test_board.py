@@ -127,3 +127,15 @@ def test_board_source_serves_cached_board_when_refresh_fails(s3_store: ObjectSto
     clock.t = 60
     assert source.get() is good
     assert source.generated_at_or_none() == NOW
+
+
+def test_old_board_without_via_still_valid() -> None:
+    raw = json.loads(live_board(departure(5)).model_dump_json())
+    del raw["departures"][0]["via"]
+    assert board_from_bytes(_raw(raw)).departures[0].via == ()
+
+
+def test_via_round_trips() -> None:
+    dep = departure(5).model_copy(update={"via": ("Erlangen", "Bamberg")})
+    board = live_board(dep)
+    assert board_from_bytes(board_to_bytes(board)).departures[0].via == ("Erlangen", "Bamberg")
