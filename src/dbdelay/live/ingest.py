@@ -96,7 +96,9 @@ def run_ingest(  # noqa: PLR0913 - keyword-only inputs of one run
     cache = prune(load_cache(store), now)
     plan_records: list[BronzeRecord] = []
     fetched = 0
-    for eva, hour in missing(cache, [s.eva for s in stations], now, plan_budget):
+    # Every fchg call failed (DB API down, bad keys): plan calls would fail the same way.
+    budget = plan_budget if changes else 0
+    for eva, hour in missing(cache, [s.eva for s in stations], now, budget):
         record, response, events = _call(
             "plan", eva, hour_key(hour), now, lambda e=eva, h=hour: client.plan(e, h)
         )

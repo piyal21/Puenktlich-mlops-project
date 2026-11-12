@@ -141,3 +141,16 @@ def test_repr_hides_key() -> None:
     client = _client(httpx.MockTransport(lambda _: httpx.Response(200)))
     assert "api-key-value" not in repr(client)
     assert "client-id-value" not in repr(client)
+
+
+def test_no_retry_on_local_protocol_error() -> None:
+    # e.g. an invalid header value (a stray quote or CR in a key): our bug, not a transient one
+    calls: list[int] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        raise httpx.LocalProtocolError("Illegal header value")
+
+    with pytest.raises(ExternalServiceError, match="LocalProtocolError"):
+        _client(httpx.MockTransport(handle)).fchg("8000199")
+    assert len(calls) == 1

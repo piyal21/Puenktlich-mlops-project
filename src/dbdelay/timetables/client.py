@@ -23,6 +23,8 @@ from dbdelay.timetables.parser import BERLIN
 from dbdelay.timetables.ratelimit import RateLimiter
 
 MAX_ATTEMPTS = 3
+# Transient transport failures only; a LocalProtocolError (e.g. an invalid header) is our bug.
+TRANSIENT_ERRORS = (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError)
 
 
 @dataclass(frozen=True)
@@ -85,10 +87,13 @@ class TimetablesClient:
         retrying = Retrying(
             stop=stop_after_attempt(MAX_ATTEMPTS),
             wait=self._wait,
-            retry=retry_if_exception_type(httpx.TransportError) | retry_if_result(_retryable),
+            retry=retry_if_exception_type(TRANSIENT_ERRORS) | retry_if_result(_retryable),
             retry_error_callback=_give_up,
         )
-        result: ApiResponse = retrying(self._attempt, path)
+        try:
+            result: ApiResponse = retrying(self._attempt, path)
+        except httpx.HTTPError as exc:  # not retried (e.g. LocalProtocolError)
+            raise ExternalServiceError(f"DB API call failed: {type(exc).__name__}") from None
         return result
 
     def plan(self, eva: str, hour_local: datetime) -> ApiResponse:

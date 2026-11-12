@@ -146,3 +146,10 @@ def test_credentials_missing_ssm_parameter_message_has_names_only(ssm: Any) -> N
 def test_credentials_missing_entirely() -> None:
     with pytest.raises(ConfigError, match="DB_API_CLIENT_ID"):
         load_db_api_credentials(Settings(_env_file=None), None)  # type: ignore[call-arg]
+
+
+def test_no_plan_calls_when_every_fchg_call_failed(s3_store: ObjectStore) -> None:
+    api = FakeApi({KIEL: ExternalServiceError("down"), FFM: ApiResponse(503, b"")})
+    with pytest.raises(ExternalServiceError):
+        ingest(s3_store, api)
+    assert api.plan_calls == []
