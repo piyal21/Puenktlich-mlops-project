@@ -3,6 +3,11 @@
 A stop's planned facts come from its latest `plan` observation, its changes from its latest
 `fchg` observation (latest ``seen_at`` wins, so a reinstated train is not cancelled). No change
 reported ⇒ changed = planned, delay 0 (ADR 0001) — the quality report flags where that is unsafe.
+
+Rules matched to HF's processing by the parity check on 2026-08-24 (Phase 7):
+- a stop seen only in `fchg` counts when an `fchg` observation carries its planned time and train
+  category (HF keeps these; mostly long-distance trains);
+- ``final_destination`` is the last *planned* stop, even when `cpth` shortens the route.
 """
 
 from collections.abc import Mapping, Sequence
@@ -33,6 +38,8 @@ class StopMerger:
     def __init__(self) -> None:
         self._plans: dict[str, tuple[StopEvent, datetime]] = {}
         self._changes: dict[str, tuple[StopEvent, datetime]] = {}
+        # Latest `fchg` observation that carries planned facts (stands in for a missing plan).
+        self._plan_like: dict[str, tuple[StopEvent, datetime]] = {}
 
     @staticmethod
     def _keep_latest(
@@ -47,34 +54,34 @@ class StopMerger:
 
     def add_change(self, event: StopEvent, seen_at: datetime) -> None:
         self._keep_latest(self._changes, event, seen_at)
+        if event.planned_utc is not None and event.train_type is not None:
+            self._keep_latest(self._plan_like, event, seen_at)
 
     def stops(self) -> dict[str, MergedStop]:
-        """Stops with a plan observation, each with its latest change (if any)."""
+        """Stops with planned facts (from `plan`, else from `fchg`), each with its latest change."""
         merged = {}
-        for stop_id, (plan, plan_seen) in self._plans.items():
+        for stop_id, (plan, plan_seen) in (self._plan_like | self._plans).items():
             change, change_seen = self._changes.get(stop_id, (None, None))
             merged[stop_id] = MergedStop(plan, plan_seen, change, change_seen)
         return merged
 
     def fchg_only(self) -> dict[str, StopEvent]:
-        """Changes for stops never seen in a plan (e.g. added trains)."""
-        return {k: e for k, (e, _) in self._changes.items() if k not in self._plans}
-
-
-def _path(stop: MergedStop) -> tuple[str, ...]:
-    """The changed path when one is reported and not empty (cancelled), else the planned one."""
-    if stop.change is not None and stop.change.changed_path:
-        return stop.change.changed_path
-    return stop.plan.planned_path
+        """Changes for stops without any planned facts (not in silver, counted in the report)."""
+        known = self._plans.keys() | self._plan_like.keys()
+        return {k: e for k, (e, _) in self._changes.items() if k not in known}
 
 
 def final_destination(stop: MergedStop) -> str | None:
-    path = _path(stop)
+    """Last planned stop (HF rule; also what the model was trained on)."""
+    path = stop.plan.planned_path
     return path[-1] if path else None
 
 
 def via(stop: MergedStop) -> tuple[str, ...]:
-    return _path(stop)
+    """Stops ahead for the board: the changed path when reported and not empty, else planned."""
+    if stop.change is not None and stop.change.changed_path:
+        return stop.change.changed_path
+    return stop.plan.planned_path
 
 
 def _empty_silver() -> pd.DataFrame:

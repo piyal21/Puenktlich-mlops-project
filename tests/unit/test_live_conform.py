@@ -99,12 +99,13 @@ def test_cancelled_has_null_label() -> None:
     assert row["final_destination"] == "Hamburg Hbf"
 
 
-def test_changed_path_sets_destination_and_via() -> None:
+def test_destination_stays_planned_but_via_follows_changed_path() -> None:
+    # HF parity (2026-08-24): HF's final destination is always the last *planned* stop.
     merger = StopMerger()
     merger.add_plan(event(), SEEN)
     merger.add_change(change(changed_path=("Neumünster", "Elmshorn")), SEEN)
     (stop,) = merger.stops().values()
-    assert final_destination(stop) == "Elmshorn"
+    assert final_destination(stop) == "Hamburg Hbf"
     assert via(stop) == ("Neumünster", "Elmshorn")
 
 
@@ -128,6 +129,30 @@ def test_fchg_only_stops_are_kept_apart() -> None:
     merger.add_change(change(stop_id="-7-2611121400-2", ride_id="-7-2611121400"), SEEN)
     assert merger.stops() == {}
     assert list(merger.fchg_only()) == ["-7-2611121400-2"]
+
+
+def test_fchg_only_stop_with_planned_time_and_train_becomes_a_stop() -> None:
+    # HF parity: HF keeps stops known only from fchg when they carry `pt` and train info.
+    merger = StopMerger()
+    seen_later = SEEN + timedelta(hours=2)
+    merger.add_change(
+        change(planned_utc=PLANNED, train_type="IC", planned_path=("Leipzig Hbf",)), SEEN
+    )
+    merger.add_change(
+        change(
+            planned_utc=PLANNED,
+            train_type="IC",
+            planned_path=("Leipzig Hbf",),
+            changed_utc=PLANNED + timedelta(minutes=5),
+        ),
+        seen_later,
+    )
+    assert merger.fchg_only() == {}
+    row = silver_of(merger).iloc[0]
+    assert row["train_type"] == "IC"
+    assert row["delay_min"] == 5
+    assert row["final_destination"] == "Leipzig Hbf"
+    assert row["ingested_at"] == pd.Timestamp(seen_later)
 
 
 def test_unknown_station_and_missing_category_dropped() -> None:
