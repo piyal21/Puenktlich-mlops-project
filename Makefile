@@ -41,7 +41,7 @@ DOCKER_ECR_CONFIG := $(subst \,/,$(or $(HOME),$(USERPROFILE)))/.docker-puenktlic
 # Fail fast with one clear line when the 12 h `aws login` session is gone.
 $(AWS_TARGETS): aws-check
 
-.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply aws-check aws-py-profile image-push web-deploy smoke-prod
+.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed parity-check app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply aws-check aws-py-profile image-push web-deploy smoke-prod
 
 help: ## Show available targets
 	@uv run python -c "import re; [print(f'{m[0]:<18} {m[1]}') for m in re.findall(r'^([a-z-]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -122,6 +122,10 @@ train-dag: ## Unpause and trigger training_pipeline in Airflow (Phase 4)
 
 seed: ## Write a sample live board into MinIO (real silver day replayed onto today; Phase 5)
 	uv run python scripts/seed_sample_data.py
+
+DAY ?= 2026-08-24
+parity-check: ## HF raw XML through the live code vs HF silver in MinIO for DAY (Phase 7; needs `make up`)
+	uv run python scripts/parity_check.py --day $(DAY)
 
 app-up: ## Start the API (:8000) and web app (:5173) with the core stack (profile "app")
 	$(COMPOSE) --profile app up -d --build --wait
