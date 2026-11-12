@@ -79,7 +79,7 @@ build-backend = "uv_build"
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src", "tests", "services/api"]
+src = ["src", "tests", "services/api", "services/jobs"]
 # Docs are prose; their code snippets are illustrations, not formatted source.
 extend-exclude = ["*.md"]
 
@@ -96,9 +96,9 @@ select = ["E", "F", "I", "B", "UP", "S", "SIM", "RUF", "PL"]
 # ---------- mypy ----------
 [tool.mypy]
 python_version = "3.12"
-files = ["src", "tests", "services/api"]
+files = ["src", "tests", "services/api", "services/jobs"]
 strict = true
-mypy_path = "src,services/api"
+mypy_path = "src,services/api,services/jobs"
 
 [[tool.mypy.overrides]]
 # rules.md: strict for src/dbdelay, normal mode elsewhere
@@ -124,7 +124,7 @@ ignore_missing_imports = true
 # ---------- pytest ----------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["services/api"]
+pythonpath = ["services/api", "services/jobs"]
 addopts = "-ra --strict-markers -m 'not integration'"
 markers = ["integration: needs the local docker compose stack (MinIO, MLflow)"]
 

@@ -41,7 +41,7 @@ DOCKER_ECR_CONFIG := $(subst \,/,$(or $(HOME),$(USERPROFILE)))/.docker-puenktlic
 # Fail fast with one clear line when the 12 h `aws login` session is gone.
 $(AWS_TARGETS): aws-check
 
-.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed parity-check app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply aws-check aws-py-profile image-push web-deploy smoke-prod
+.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed parity-check ingest-local etl-live-local jobs-requirements jobs-image-build app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply aws-check aws-py-profile image-push web-deploy smoke-prod
 
 help: ## Show available targets
 	@uv run python -c "import re; [print(f'{m[0]:<18} {m[1]}') for m in re.findall(r'^([a-z-]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -126,6 +126,18 @@ seed: ## Write a sample live board into MinIO (real silver day replayed onto tod
 DAY ?= 2026-08-24
 parity-check: ## HF raw XML through the live code vs HF silver in MinIO for DAY (Phase 7; needs `make up`)
 	uv run python scripts/parity_check.py --day $(DAY)
+
+ingest-local: ## One live ingest run: real DB API (keys from .env) -> local MinIO bronze, plan cache, board (Phase 7)
+	uv run python scripts/live_jobs.py ingest
+
+etl-live-local: ## Live bronze -> silver + quality report in local MinIO for DAY (UTC; Phase 7)
+	uv run python scripts/live_jobs.py etl --day $(DAY)
+
+jobs-requirements: ## Regenerate the jobs image's hash-pinned requirements from uv.lock
+	uv export --frozen --no-dev --extra jobs --no-emit-project --format requirements-txt -o services/jobs/requirements.txt
+
+jobs-image-build: ## Build the jobs image locally (linux/amd64), tag puenktlich-jobs:local
+	docker buildx build --platform linux/amd64 --provenance=false -f services/jobs/Dockerfile -t puenktlich-jobs:local --load .
 
 app-up: ## Start the API (:8000) and web app (:5173) with the core stack (profile "app")
 	$(COMPOSE) --profile app up -d --build --wait
