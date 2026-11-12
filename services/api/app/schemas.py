@@ -64,6 +64,8 @@ class TrainOut(BaseModel):
     number: str | None
     line: str | None
     destination: str | None
+    # Phase 7 (additive): stations after this one; empty for sample data.
+    via: list[str] = []
 
 
 class DepartureOut(BaseModel):
@@ -170,6 +172,7 @@ def departure_out(row: BoardDeparture, prediction: Prediction | None) -> Departu
             number=row.train_number,
             line=row.line_number,
             destination=row.final_destination,
+            via=list(row.via),
         ),
         prediction=None if prediction is None else prediction_out(prediction),
     )

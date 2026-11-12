@@ -44,6 +44,7 @@ def test_board_with_predictions(s3_store: ObjectStore, bundle_files: dict[str, b
         "number": "1602",
         "line": None,
         "destination": "Berlin Hbf",
+        "via": [],  # sample boards carry no stops on the way
     }
     assert first["platform"] == "7"
     assert 0 <= first["prediction"]["p_late"] <= 1
@@ -54,6 +55,12 @@ def test_board_with_predictions(s3_store: ObjectStore, bundle_files: dict[str, b
     assert delayed["live_departure"] == "2026-10-05T15:28:00+02:00"
     assert cancelled["cancelled"] is True
     assert cancelled["prediction"] is None
+
+
+def test_board_train_has_via(s3_store: ObjectStore) -> None:
+    board = live_board(departure(5, via=("Hanau Hbf", "Fulda", "Berlin Hbf")), source="live")
+    body = client(make_deps(s3_store, board=board)).get(URL).json()
+    assert body["departures"][0]["train"]["via"] == ["Hanau Hbf", "Fulda", "Berlin Hbf"]
 
 
 def test_hours_filter(s3_store: ObjectStore, bundle_files: dict[str, bytes]) -> None:
