@@ -114,3 +114,53 @@ def test_main_prints_one_line_per_check_and_exits_1_on_failure(
     lines = capsys.readouterr().out.splitlines()
     assert len(lines) == len(smoke.CHECKS)
     assert "FAIL api_docs" in lines[smoke.CHECKS_ORDER.index("api_docs")]
+
+
+NOW = smoke.datetime(2026, 11, 13, 9, 0, tzinfo=smoke.UTC)
+BOARD_URL = ("GET", "/api/v1/stations/8010101/departures?hours=3")
+
+
+def live_board(**overrides: Any) -> Any:
+    board = {
+        "data_source": "live",
+        "stale": False,
+        "data_as_of": "2026-11-13T09:52:00+01:00",  # 08:52 UTC, 8 min old
+        "departures": [{"event_id": "e1", "train": {"via": ["Gotha", "Eisenach"]}}],
+    } | overrides
+    return _json(200, board)
+
+
+def live_failures(board: Any) -> set[str]:
+    site = good_site() | {BOARD_URL: board}
+    results = smoke.run(BASE, fetch_from(site), expect_live=True, now=NOW)
+    return {name for name, reason in results if reason is not None}
+
+
+def test_expect_live_passes_on_a_fresh_live_board() -> None:
+    results = smoke.run(
+        BASE, fetch_from(good_site() | {BOARD_URL: live_board()}), expect_live=True, now=NOW
+    )
+    assert "board_is_live" in [name for name, _ in results]
+    assert "board_is_sample" not in [name for name, _ in results]
+    assert all(reason is None for _, reason in results), results
+
+
+def test_expect_live_fails_on_sample_board() -> None:
+    assert live_failures(live_board(data_source="sample")) == {"board_is_live"}
+
+
+def test_expect_live_fails_on_old_data_as_of() -> None:
+    assert live_failures(live_board(data_as_of="2026-11-13T09:30:00+01:00")) == {"board_is_live"}
+
+
+def test_expect_live_fails_without_via_list() -> None:
+    board = live_board(departures=[{"event_id": "e1", "train": {"destination": "X"}}])
+    assert live_failures(board) == {"board_is_live"}
+
+
+def test_main_expect_live_flag(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(smoke, "http_fetch", fetch_from(good_site()))  # sample board
+    assert smoke.main(["--base", BASE, "--expect-live"]) == 1
+    assert "FAIL board_is_live" in capsys.readouterr().out
