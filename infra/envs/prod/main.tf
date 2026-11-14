@@ -29,6 +29,16 @@ module "ssm" {
   source = "../../modules/ssm"
 }
 
+# Phase 7 fix: stop tracking the DB API key parameters (their decrypted values were refreshed into
+# state). The parameters themselves stay in SSM; only Terraform forgets them.
+removed {
+  from = module.ssm.aws_ssm_parameter.db_api
+
+  lifecycle {
+    destroy = false
+  }
+}
+
 module "budget" {
   source      = "../../modules/budget"
   alert_email = var.alert_email
@@ -163,13 +173,19 @@ module "web_cdn" {
 
 data "aws_iam_policy_document" "ingest" {
   statement {
-    sid     = "BronzePlansBoard"
-    actions = ["s3:GetObject", "s3:PutObject"]
-    resources = [
-      "${local.data_arn}/bronze/timetables/*",
-      "${local.data_arn}/live/plans/*",
-      "${local.data_arn}/live/boards/*",
-    ]
+    sid       = "WriteBronze"
+    actions   = ["s3:PutObject"]
+    resources = ["${local.data_arn}/bronze/timetables/*"]
+  }
+  statement {
+    sid       = "PlanCache"
+    actions   = ["s3:GetObject", "s3:PutObject"]
+    resources = ["${local.data_arn}/live/plans/*"]
+  }
+  statement {
+    sid       = "OwnBoard" # candidate until board_mode = "live": cannot touch the public board
+    actions   = ["s3:GetObject", "s3:PutObject"]
+    resources = ["${local.data_arn}/${local.ingest_board_key}"]
   }
   statement {
     sid       = "ReadDbApiKeys"
