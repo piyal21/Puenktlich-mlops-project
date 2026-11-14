@@ -119,6 +119,8 @@ For the portfolio, the problem is a vehicle: it naturally needs **real ETL, larg
 | GET | `/api/v1/model` | Current champion metadata (version, trained_at, metrics) |
 
 Errors use `application/problem+json` (RFC 9457). Details in `architecture.md`.
+Phase 7 (additive): each board departure's `train.via` lists the stations after this one, so "Going to"
+matches any stop on the way (empty for sample data).
 
 ## 7. Non-functional requirements
 
