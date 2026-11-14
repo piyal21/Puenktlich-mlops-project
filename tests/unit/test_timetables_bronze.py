@@ -33,3 +33,9 @@ def test_bronze_naive_time_rejected() -> None:
 def test_bronze_garbage_raises() -> None:
     with pytest.raises(DataValidationError):
         list(iter_records(b"not gzip"))
+
+
+def test_bronze_body_with_unicode_line_separators_round_trips() -> None:
+    body = "<timetable>a" + chr(0x2028) + "b" + chr(0x2029) + "c" + chr(0x85) + "d</timetable>"
+    record = BronzeRecord("fchg", "8000105", None, AT, 200, body, None)
+    assert list(iter_records(records_to_bytes([record]))) == [record]

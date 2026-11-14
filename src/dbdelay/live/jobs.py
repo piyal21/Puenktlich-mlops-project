@@ -1,5 +1,7 @@
 """Wiring for the live jobs (Lambda handlers, laptop CLIs): settings → client, store, stations."""
 
+import math
+from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 
 import boto3
@@ -37,7 +39,12 @@ def _store(settings: Settings) -> ObjectStore:
     return ObjectStore(make_s3_client(settings), settings.data_bucket)
 
 
-def ingest_job(settings: Settings, client: TimetablesApi, now: datetime) -> IngestResult:
+def ingest_job(
+    settings: Settings,
+    client: TimetablesApi,
+    now: datetime,
+    time_left: Callable[[], float] = lambda: math.inf,
+) -> IngestResult:
     return run_ingest(
         _store(settings),
         client,
@@ -45,6 +52,7 @@ def ingest_job(settings: Settings, client: TimetablesApi, now: datetime) -> Inge
         now=now,
         board_key=settings.board_key,
         plan_budget=settings.plan_call_budget,
+        time_left=time_left,
     )
 
 

@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
+from botocore.exceptions import ClientError
 from pydantic import AwareDatetime, BaseModel, ConfigDict, ValidationError
 
 from dbdelay.errors import ExternalServiceError, NotFoundError
@@ -111,14 +112,23 @@ def load_cache(store: ObjectStore) -> PlanCache:
         data = store.get_bytes(PLANS_KEY)
     except NotFoundError:
         return PlanCache()
-    except ExternalServiceError:
-        get_logger("ingest").warning("plan cache not readable, starting empty")
+    except ExternalServiceError as exc:
+        if not _access_denied(exc):
+            raise  # a real storage problem: keep the good cache, fail this run
         return PlanCache()
     try:
         return PlanCache.model_validate_json(gzip.decompress(data))
     except (OSError, EOFError, ValidationError):
         get_logger("ingest").warning("plan cache unreadable, starting empty")
         return PlanCache()
+
+
+def _access_denied(exc: ExternalServiceError) -> bool:
+    cause = exc.__cause__
+    return isinstance(cause, ClientError) and cause.response.get("Error", {}).get("Code") in {
+        "AccessDenied",
+        "403",
+    }
 
 
 def save_cache(store: ObjectStore, cache: PlanCache) -> None:

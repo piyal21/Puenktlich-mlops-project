@@ -5,7 +5,8 @@ succeeded raises after bronze is written, so the Lambda reports an error and the
 stays in place.
 """
 
-from collections.abc import Sequence
+import math
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
@@ -22,6 +23,10 @@ from dbdelay.timetables.client import ApiResponse
 from dbdelay.timetables.parser import StopEvent, parse_timetable
 
 HTTP_OK = 200
+HTTP_TOO_MANY = 429
+# Worst case for one call: 3 attempts x 10 s timeout + backoff. Below this much time left, start no
+# new call, so bronze, plan cache and board are always written before the Lambda timeout.
+MARGIN_S = 45.0
 HTTP_NOT_FOUND = 404  # plan for an hour without data: remember it as fetched (empty)
 
 
@@ -64,11 +69,13 @@ class _Fetch(Protocol):
 
 
 def _previous_board(store: ObjectStore, key: str) -> LiveBoard | None:
-    """The last board, or None (missing: S3 answers 403 without s3:ListBucket; or invalid)."""
+    """The last *live* board, or None: missing (S3 403 without s3:ListBucket), unreadable, or a
+    sample board (at the switch to live it still sits at the key; never mix sample into live)."""
     try:
-        return board_from_bytes(store.get_bytes(key))
+        board = board_from_bytes(store.get_bytes(key))
     except (NotFoundError, ExternalServiceError, DataValidationError):
         return None
+    return board if board.source == "live" else None
 
 
 def run_ingest(  # noqa: PLR0913 - keyword-only inputs of one run
@@ -79,14 +86,23 @@ def run_ingest(  # noqa: PLR0913 - keyword-only inputs of one run
     now: datetime,
     board_key: str,
     plan_budget: int,
+    time_left: Callable[[], float] = lambda: math.inf,
 ) -> IngestResult:
-    """Run once. Raises ``ExternalServiceError`` if no `fchg` call succeeded (bronze kept)."""
+    """Run once. Raises ``ExternalServiceError`` if no `fchg` call succeeded (bronze kept).
+
+    ``time_left`` (seconds, e.g. from the Lambda context) stops new calls near the deadline; the
+    plan top-up also stops after a 429 (the DB API is limiting us: don't spend more quota).
+    """
     log = get_logger("ingest")
     fchg_records: list[BronzeRecord] = []
     changes: dict[str, tuple[StopEvent, ...]] = {}
     failed: list[str] = []
     for station in stations:
         eva = station.eva
+        if time_left() < MARGIN_S:
+            fchg_records.append(BronzeRecord("fchg", eva, None, now, None, None, "NoTimeLeft"))
+            failed.append(eva)
+            continue
         record, _, events = _call("fchg", eva, None, now, lambda e=eva: client.fchg(e))
         fchg_records.append(record)
         if events is None:
@@ -100,10 +116,14 @@ def run_ingest(  # noqa: PLR0913 - keyword-only inputs of one run
     # Every fchg call failed (DB API down, bad keys): plan calls would fail the same way.
     budget = plan_budget if changes else 0
     for eva, hour in missing(cache, [s.eva for s in stations], now, budget):
+        if time_left() < MARGIN_S:
+            break
         record, response, events = _call(
             "plan", eva, hour_key(hour), now, lambda e=eva, h=hour: client.plan(e, h)
         )
         plan_records.append(record)
+        if response is not None and response.status == HTTP_TOO_MANY:
+            break
         if events is None and response is not None and response.status == HTTP_NOT_FOUND:
             events = ()
         if events is not None:

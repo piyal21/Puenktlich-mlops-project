@@ -1,5 +1,8 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
+from botocore.exceptions import ClientError
+
 from dbdelay.errors import ExternalServiceError
 from dbdelay.live.plans import (
     PLANS_KEY,
@@ -114,13 +117,20 @@ def test_missing_or_invalid_cache_reads_as_empty(s3_store: ObjectStore) -> None:
     assert load_cache(s3_store) == PlanCache()
 
 
-class _NoReadStore(ObjectStore):
-    """S3 without s3:ListBucket answers 403 (not 404) for a missing object."""
+class _FlakyStore(ObjectStore):
+    def __init__(self, store: ObjectStore, code: str) -> None:
+        super().__init__(store._client, store.bucket)
+        self._code = code
 
     def get_bytes(self, key: str) -> bytes:
-        raise ExternalServiceError(f"get {key} failed")
+        cause = ClientError({"Error": {"Code": self._code, "Message": "x"}}, "GetObject")
+        raise ExternalServiceError(f"get {key} failed") from cause
 
 
-def test_unreadable_cache_reads_as_empty(s3_store: ObjectStore) -> None:
-    store = _NoReadStore(s3_store._client, s3_store.bucket)
-    assert load_cache(store) == PlanCache()
+def test_access_denied_cache_reads_as_empty(s3_store: ObjectStore) -> None:
+    assert load_cache(_FlakyStore(s3_store, "AccessDenied")) == PlanCache()
+
+
+def test_other_storage_errors_are_not_mistaken_for_a_missing_cache(s3_store: ObjectStore) -> None:
+    with pytest.raises(ExternalServiceError):
+        load_cache(_FlakyStore(s3_store, "SlowDown"))

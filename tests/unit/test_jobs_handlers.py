@@ -10,7 +10,7 @@ from moto import mock_aws
 import etl_handler
 import ingest_handler
 from dbdelay.config import Settings
-from dbdelay.errors import ConfigError
+from dbdelay.errors import ConfigError, ExternalServiceError
 from dbdelay.live import jobs
 from dbdelay.live.ingest import IngestResult
 from dbdelay.live.quality import LiveQualityReport
@@ -32,7 +32,9 @@ def test_ingest_handler_returns_counts_and_metric(
         calls=60, fchg_ok=30, failed_stations=(), plan_hours_fetched=30, events=4321, board_rows=900
     )
     monkeypatch.setattr(ingest_handler, "make_client", lambda settings: object())
-    monkeypatch.setattr(ingest_handler, "ingest_job", lambda settings, client, now: result)
+    monkeypatch.setattr(
+        ingest_handler, "ingest_job", lambda settings, client, now, time_left: result
+    )
     out = ingest_handler.handler({}, SimpleNamespace(aws_request_id="r"))
     assert out["events"] == 4321
     assert out["failed_stations"] == []
@@ -52,7 +54,9 @@ def test_ingest_handler_builds_the_client_once(monkeypatch: pytest.MonkeyPatch) 
         return object()
 
     monkeypatch.setattr(ingest_handler, "make_client", fake_client)
-    monkeypatch.setattr(ingest_handler, "ingest_job", lambda settings, client, now: result)
+    monkeypatch.setattr(
+        ingest_handler, "ingest_job", lambda settings, client, now, time_left: result
+    )
     ingest_handler.handler({}, None)
     ingest_handler.handler({}, None)
     assert made == [1]
@@ -112,3 +116,18 @@ def test_make_client_reads_keys_from_ssm_when_only_names_are_set() -> None:
 def test_make_client_without_any_keys_fails_clearly() -> None:
     with pytest.raises(ConfigError, match="DB_API_CLIENT_ID"):
         jobs.make_client(Settings(_env_file=None))  # type: ignore[call-arg]
+
+
+def test_ingest_handler_drops_the_client_after_a_failed_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # e.g. keys rotated in SSM: every call 401 → run fails → next invocation reloads the keys
+    monkeypatch.setattr(ingest_handler, "_client", object())
+
+    def boom(settings: object, client: object, now: object, time_left: object = None) -> object:
+        raise ExternalServiceError("all 30 fchg calls failed")
+
+    monkeypatch.setattr(ingest_handler, "ingest_job", boom)
+    with pytest.raises(ExternalServiceError):
+        ingest_handler.handler({}, None)
+    assert ingest_handler._client is None

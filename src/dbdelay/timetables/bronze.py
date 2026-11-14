@@ -57,7 +57,8 @@ def iter_records(data: bytes) -> Iterator[BronzeRecord]:
         text = gzip.decompress(data).decode("utf-8")
     except (OSError, EOFError, UnicodeDecodeError) as exc:
         raise DataValidationError("bronze object is not gzip UTF-8 text") from exc
-    for number, line in enumerate(text.splitlines(), start=1):
+    # split on "\n" only: splitlines() would also split on U+2028/U+2029/U+0085 in raw XML.
+    for number, line in enumerate(text.split("\n"), start=1):
         if not line:
             continue
         try:

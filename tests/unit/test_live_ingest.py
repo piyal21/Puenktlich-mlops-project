@@ -1,10 +1,11 @@
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError
 from moto import mock_aws
 from pydantic import SecretStr
 
@@ -14,10 +15,11 @@ from dbdelay.errors import ConfigError, ExternalServiceError
 from dbdelay.live.ingest import run_ingest
 from dbdelay.live.plans import PLANS_KEY, load_cache
 from dbdelay.live.secrets import load_db_api_credentials
-from dbdelay.serving.board import board_from_bytes
+from dbdelay.serving.board import board_from_bytes, board_to_bytes
 from dbdelay.storage import ObjectStore
 from dbdelay.timetables.bronze import iter_records
 from dbdelay.timetables.client import ApiResponse
+from tests.boards import departure, live_board
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 KIEL, FFM = "8000199", "8000105"
@@ -160,7 +162,8 @@ class _FirstRunStore(ObjectStore):
 
     def get_bytes(self, key: str) -> bytes:
         if key in {PLANS_KEY, BOARD}:
-            raise ExternalServiceError(f"get {key} failed")
+            denied = ClientError({"Error": {"Code": "AccessDenied", "Message": "x"}}, "GetObject")
+            raise ExternalServiceError(f"get {key} failed") from denied
         return super().get_bytes(key)
 
 
@@ -170,3 +173,40 @@ def test_first_run_without_list_permission_succeeds(s3_store: ObjectStore) -> No
     result = ingest(store, api)
     assert result.fchg_ok == 2
     assert s3_store.exists(BOARD)
+
+
+def test_ingest_stops_starting_calls_when_time_runs_short(s3_store: ObjectStore) -> None:
+    api = FakeApi({KIEL: ok("sample_fchg.xml"), FFM: ApiResponse(200, b"<timetable/>")})
+    left = iter([300.0, 10.0])  # plenty for the first fchg call, then almost nothing
+
+    result = run_ingest(
+        s3_store, api, STATIONS, now=NOW, board_key=BOARD, plan_budget=70,
+        time_left=lambda: next(left, 10.0),
+    )  # fmt: skip
+    assert result.fchg_ok == 1
+    assert result.failed_stations == (FFM,)
+    assert api.plan_calls == []
+    assert s3_store.exists(BOARD)  # what was fetched is still written
+
+
+class _RateLimitedPlans(FakeApi):
+    def plan(self, eva: str, hour_local: datetime) -> ApiResponse:
+        self.plan_calls.append((eva, f"{hour_local:%y%m%d%H}"))
+        return ApiResponse(429, b"")
+
+
+def test_plan_top_up_stops_after_a_429(s3_store: ObjectStore) -> None:
+    api = _RateLimitedPlans({KIEL: ok("sample_fchg.xml"), FFM: ApiResponse(200, b"<timetable/>")})
+    result = ingest(s3_store, api)
+    assert len(api.plan_calls) == 1
+    assert result.plan_hours_fetched == 0
+
+
+def test_sample_board_rows_are_never_copied_into_a_live_board(s3_store: ObjectStore) -> None:
+    sample = live_board(departure(5, eva=FFM, planned_departure_utc=NOW + timedelta(minutes=5)))
+    s3_store.put_bytes(BOARD, board_to_bytes(sample))
+    api = FakeApi({KIEL: ok("sample_fchg.xml"), FFM: ApiResponse(503, b"")})
+    ingest(s3_store, api)
+    board = board_from_bytes(s3_store.get_bytes(BOARD))
+    assert board.source == "live"
+    assert all(d.eva != FFM for d in board.departures)
