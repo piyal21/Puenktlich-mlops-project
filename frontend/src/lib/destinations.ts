@@ -1,9 +1,11 @@
 import type { Departure } from "../api/types";
 
-/** Every stop a train still serves: the stops on the way plus its final stop, trimmed, no blanks
- * (blank names occur in real data). Sample data has no `via`, so only the final stop counts. */
+/** Every stop a train still serves, trimmed, no blanks (blank names occur in real data). Live
+ * data: `via` (its last entry is the real end, also when the route was shortened). Sample data
+ * has no `via`, so only the final stop counts. */
 export function placesOf(departure: Departure): string[] {
-  const names = [...(departure.train.via ?? []), departure.train.destination ?? ""];
+  const via = departure.train.via ?? [];
+  const names = via.length > 0 ? via : [departure.train.destination ?? ""];
   return [...new Set(names.map((name) => name.trim()).filter((name) => name !== ""))];
 }
 

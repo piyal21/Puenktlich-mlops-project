@@ -90,3 +90,20 @@ describe("stops on the way (via, Phase 7)", () => {
     expect(goingTo([to("Erlangen")], "Erlangen")).toHaveLength(1);
   });
 });
+
+describe("shortened routes", () => {
+  it("does not match the planned final stop the train now skips", () => {
+    const shortened = makeDeparture({
+      event_id: "short",
+      train: {
+        type: "RE",
+        number: "7",
+        line: null,
+        destination: "Berlin Hbf",
+        via: ["Erlangen", "Bamberg"],
+      },
+    });
+    expect(goingTo([shortened], "Berlin Hbf")).toHaveLength(0);
+    expect(goingTo([shortened], "Bamberg")).toHaveLength(1);
+  });
+});
