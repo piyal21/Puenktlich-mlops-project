@@ -65,3 +65,10 @@ resource "aws_lambda_function" "this" {
 
   depends_on = [aws_iam_role_policy.this]
 }
+
+# Scheduled invocations are asynchronous: Lambda retries a failed run up to twice by default.
+resource "aws_lambda_function_event_invoke_config" "this" {
+  count                  = var.async_retries == null ? 0 : 1
+  function_name          = aws_lambda_function.this.function_name
+  maximum_retry_attempts = var.async_retries
+}

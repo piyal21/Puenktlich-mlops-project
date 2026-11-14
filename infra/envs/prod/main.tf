@@ -179,13 +179,15 @@ data "aws_iam_policy_document" "ingest" {
 }
 
 module "ingest" {
-  source      = "../../modules/lambda_image"
-  name        = "ingest"
-  image_uri   = local.jobs_image_uri
-  command     = ["ingest_handler.handler"]
-  memory_mb   = 512 # account quota: max 512 MB
-  timeout_s   = 300
-  policy_json = data.aws_iam_policy_document.ingest.json
+  source    = "../../modules/lambda_image"
+  name      = "ingest"
+  image_uri = local.jobs_image_uri
+  command   = ["ingest_handler.handler"]
+  memory_mb = 512 # account quota: max 512 MB
+  timeout_s = 300
+  # A retry could overlap the next 15-min run and break the 60 calls/min DB API limit.
+  async_retries = 0
+  policy_json   = data.aws_iam_policy_document.ingest.json
   environment = {
     APP_ENV                = "prod"
     LOG_LEVEL              = "INFO"
@@ -223,13 +225,15 @@ data "aws_iam_policy_document" "etl_daily" {
 }
 
 module "etl_daily" {
-  source      = "../../modules/lambda_image"
-  name        = "etl-daily"
-  image_uri   = local.jobs_image_uri
-  command     = ["etl_handler.handler"]
-  memory_mb   = 512 # account quota: max 512 MB
-  timeout_s   = 600
-  policy_json = data.aws_iam_policy_document.etl_daily.json
+  source    = "../../modules/lambda_image"
+  name      = "etl-daily"
+  image_uri = local.jobs_image_uri
+  command   = ["etl_handler.handler"]
+  memory_mb = 512 # account quota: max 512 MB
+  timeout_s = 600
+  # Idempotent (re-running a day overwrites it): one retry is enough.
+  async_retries = 1
+  policy_json   = data.aws_iam_policy_document.etl_daily.json
   environment = {
     APP_ENV     = "prod"
     LOG_LEVEL   = "INFO"
