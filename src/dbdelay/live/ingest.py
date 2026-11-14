@@ -64,9 +64,10 @@ class _Fetch(Protocol):
 
 
 def _previous_board(store: ObjectStore, key: str) -> LiveBoard | None:
+    """The last board, or None (missing: S3 answers 403 without s3:ListBucket; or invalid)."""
     try:
         return board_from_bytes(store.get_bytes(key))
-    except (NotFoundError, DataValidationError):
+    except (NotFoundError, ExternalServiceError, DataValidationError):
         return None
 
 

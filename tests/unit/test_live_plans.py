@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+from dbdelay.errors import ExternalServiceError
 from dbdelay.live.plans import (
     PLANS_KEY,
     PlanCache,
@@ -111,3 +112,15 @@ def test_missing_or_invalid_cache_reads_as_empty(s3_store: ObjectStore) -> None:
     assert load_cache(s3_store) == PlanCache()
     s3_store.put_bytes(PLANS_KEY, b"not gzip")
     assert load_cache(s3_store) == PlanCache()
+
+
+class _NoReadStore(ObjectStore):
+    """S3 without s3:ListBucket answers 403 (not 404) for a missing object."""
+
+    def get_bytes(self, key: str) -> bytes:
+        raise ExternalServiceError(f"get {key} failed")
+
+
+def test_unreadable_cache_reads_as_empty(s3_store: ObjectStore) -> None:
+    store = _NoReadStore(s3_store._client, s3_store.bucket)
+    assert load_cache(store) == PlanCache()

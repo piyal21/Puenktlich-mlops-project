@@ -153,3 +153,20 @@ def test_no_plan_calls_when_every_fchg_call_failed(s3_store: ObjectStore) -> Non
     with pytest.raises(ExternalServiceError):
         ingest(s3_store, api)
     assert api.plan_calls == []
+
+
+class _FirstRunStore(ObjectStore):
+    """First run without s3:ListBucket: missing keys read as 403 (ExternalServiceError)."""
+
+    def get_bytes(self, key: str) -> bytes:
+        if key in {PLANS_KEY, BOARD}:
+            raise ExternalServiceError(f"get {key} failed")
+        return super().get_bytes(key)
+
+
+def test_first_run_without_list_permission_succeeds(s3_store: ObjectStore) -> None:
+    store = _FirstRunStore(s3_store._client, s3_store.bucket)
+    api = FakeApi({KIEL: ok("sample_fchg.xml"), FFM: ApiResponse(200, b"<timetable/>")})
+    result = ingest(store, api)
+    assert result.fchg_ok == 2
+    assert s3_store.exists(BOARD)

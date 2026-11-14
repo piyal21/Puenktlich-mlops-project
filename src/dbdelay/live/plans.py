@@ -11,7 +11,7 @@ from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, ValidationError
 
-from dbdelay.errors import NotFoundError
+from dbdelay.errors import ExternalServiceError, NotFoundError
 from dbdelay.logging import get_logger
 from dbdelay.storage import ObjectStore
 from dbdelay.timetables.parser import BERLIN, StopEvent
@@ -103,10 +103,16 @@ def prune(cache: PlanCache, now: datetime) -> PlanCache:
 
 
 def load_cache(store: ObjectStore) -> PlanCache:
-    """The stored cache; empty when missing or unreadable (the next runs refill it)."""
+    """The stored cache; empty when missing or unreadable (the next runs refill it).
+
+    The ingest role has no s3:ListBucket, so S3 answers 403 (not 404) for a missing object.
+    """
     try:
         data = store.get_bytes(PLANS_KEY)
     except NotFoundError:
+        return PlanCache()
+    except ExternalServiceError:
+        get_logger("ingest").warning("plan cache not readable, starting empty")
         return PlanCache()
     try:
         return PlanCache.model_validate_json(gzip.decompress(data))
