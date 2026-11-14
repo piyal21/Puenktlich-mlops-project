@@ -12,16 +12,19 @@ from datetime import date
 from pathlib import Path
 
 import pandas as pd
+from botocore.exceptions import BotoCoreError
 
+from dbdelay.aws_session import refusal_line
 from dbdelay.config import get_settings
 from dbdelay.data.hf_backfill import hf_download
 from dbdelay.data.silver import silver_key
 from dbdelay.data.stations import Station, alias_map, load_stations
 from dbdelay.errors import DataValidationError, DbDelayError
 from dbdelay.live.conform import StopMerger, to_silver
+from dbdelay.live.etl import live_silver_key
 from dbdelay.live.hf_raw import hf_raw_paths, iter_hf_raw
-from dbdelay.live.reconcile import compare_silver
-from dbdelay.storage import ObjectStore, make_s3_client
+from dbdelay.live.reconcile import THRESHOLD, compare_silver, verdict
+from dbdelay.storage import ObjectStore, make_aws_s3_client, make_s3_client
 from dbdelay.timetables.parser import parse_timetable
 
 RAW_DIR = Path("data/raw/hf_raw")
@@ -100,3 +103,45 @@ def parity_main(argv: Sequence[str] | None = None) -> int:
         f" | destination {comparison.destination_agreement}\n"
     )
     return 0
+
+
+def reconciliation_key(day: date) -> str:
+    return f"silver/_quality/source=live/reconciliation/date={day:%Y-%m-%d}.json"
+
+
+def reconcile_main(argv: Sequence[str] | None = None) -> int:
+    """CLI for `make reconcile DAYS=...`: live silver (AWS, read) vs HF raw through the same code.
+
+    Writes `data/reconciliation/<day>.json` and the same JSON next to the live quality report.
+    Exit 1 if any day is below the threshold (spec §4: 95 % found, 95 % is_late agreement).
+    """
+    parser = argparse.ArgumentParser(description="Reconcile live silver against HF raw data.")
+    parser.add_argument("--days", nargs="+", type=date.fromisoformat, required=True)
+    parser.add_argument("--data-bucket", required=True)
+    parser.add_argument("--region", default="eu-north-1")
+    args = parser.parse_args(argv)
+    stations = load_stations(get_settings().stations_file)
+    passed = True
+    try:
+        aws = ObjectStore(make_aws_s3_client(args.region), args.data_bucket)
+        for day in args.days:
+            local = [hf_download(p, RAW_DIR)[0] for p in hf_raw_paths(day)]
+            hf, _ = build_hf_raw_silver(local, stations, day)
+            live = pd.read_parquet(io.BytesIO(aws.get_bytes(live_silver_key(day))))
+            comparison = compare_silver(live, hf, day)
+            body = comparison.to_json()
+            OUT_DIR.mkdir(parents=True, exist_ok=True)
+            (OUT_DIR / f"{day}.json").write_text(body, encoding="utf-8", newline="\n")
+            aws.put_bytes(reconciliation_key(day), body.encode("utf-8"), "application/json")
+            ok = verdict(comparison)
+            passed &= ok
+            sys.stdout.write(
+                f"{'PASS' if ok else 'FAIL'} {day}: live {comparison.left_rows} / hf "
+                f"{comparison.right_rows} / matched {comparison.matched} | hf found "
+                f"{comparison.match_rate_right} | is_late {comparison.is_late_agreement} "
+                f"(threshold {THRESHOLD})\n"
+            )
+    except (DbDelayError, BotoCoreError) as exc:
+        sys.stderr.write(f"reconcile failed: {refusal_line('reconcile', exc)}\n")
+        return 1
+    return 0 if passed else 1

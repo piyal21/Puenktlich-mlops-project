@@ -5,7 +5,7 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from dbdelay.live.reconcile import compare_silver
+from dbdelay.live.reconcile import THRESHOLD, compare_silver, verdict
 
 DAY = date(2026, 8, 24)
 
@@ -65,3 +65,14 @@ def test_compare_empty_has_no_rates() -> None:
     assert c.matched == 0
     assert c.is_late_agreement is None
     assert c.match_rate_left is None
+
+
+def test_threshold_verdict() -> None:
+
+    assert THRESHOLD == 0.95
+    good = compare_silver(frame(BASE), frame(BASE), DAY)
+    assert verdict(good)
+    missing = compare_silver(frame(BASE[:1]), frame(BASE), DAY)  # live has 1 of 3 HF rows
+    assert not verdict(missing)
+    empty = compare_silver(frame([]), frame([]), DAY)
+    assert not verdict(empty)  # nothing to compare is not a pass

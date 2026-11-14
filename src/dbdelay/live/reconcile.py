@@ -69,3 +69,14 @@ def compare_silver(left: pd.DataFrame, right: pd.DataFrame, day: date) -> Compar
         destination_agreement=_rate(destination_l == destination_r),
         per_station=per_station,
     )
+
+
+# Spec §4 item 4 (owner-approved 2026-11-12): HF departures found in live silver, and is_late
+# agreement on matched non-cancelled rows. Live is the left side, HF the right side.
+THRESHOLD = 0.95
+
+
+def verdict(comparison: Comparison) -> bool:
+    """True when live silver meets the reconciliation threshold against HF for that day."""
+    found, agree = comparison.match_rate_right, comparison.is_late_agreement
+    return found is not None and agree is not None and found >= THRESHOLD and agree >= THRESHOLD

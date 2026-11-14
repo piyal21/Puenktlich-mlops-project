@@ -22,14 +22,14 @@ IMAGE_TAG ?= $(shell git rev-parse --short=12 HEAD)
 ECR_REPO = $(call tf_out,ecr_repository_url)
 ECR_REGISTRY = $(firstword $(subst /, ,$(ECR_REPO)))
 ECR_JOBS_REPO = $(call tf_out,ecr_jobs_repository_url)
-AWS_TARGETS := publish-model rollback-prod upload-sample-days put-db-api-secrets jobs-image-push tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply image-push web-deploy smoke-prod smoke-prod-live
+AWS_TARGETS := publish-model rollback-prod upload-sample-days put-db-api-secrets reconcile jobs-image-push tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply image-push web-deploy smoke-prod smoke-prod-live
 $(AWS_TARGETS) aws-check: export AWS_PROFILE := $(AWS_PROFILE)
 $(AWS_TARGETS) aws-check: export AWS_REGION := $(AWS_REGION)
 # Git Bash would rewrite "/*" and docker -v paths into Windows paths.
 $(AWS_TARGETS) tf-scan: export MSYS_NO_PATHCONV := 1
 # boto3 cannot read `aws login` sessions without botocore[crt]; the Python CLIs use a profile
 # whose credential_process asks the AWS CLI for them instead (no extra dependency).
-PY_AWS_TARGETS := publish-model rollback-prod upload-sample-days put-db-api-secrets
+PY_AWS_TARGETS := publish-model rollback-prod upload-sample-days put-db-api-secrets reconcile
 AWS_PY_PROFILE := $(AWS_PROFILE)-py
 $(PY_AWS_TARGETS): export AWS_PROFILE := $(AWS_PY_PROFILE)
 $(PY_AWS_TARGETS): aws-py-profile
@@ -42,7 +42,7 @@ DOCKER_ECR_CONFIG := $(subst \,/,$(or $(HOME),$(USERPROFILE)))/.docker-puenktlic
 # Fail fast with one clear line when the 12 h `aws login` session is gone.
 $(AWS_TARGETS): aws-check
 
-.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed parity-check ingest-local etl-live-local jobs-requirements jobs-image-build jobs-image-push put-db-api-secrets app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply aws-check aws-py-profile image-push web-deploy smoke-prod smoke-prod-live
+.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed parity-check reconcile ingest-local etl-live-local jobs-requirements jobs-image-build jobs-image-push put-db-api-secrets app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply aws-check aws-py-profile image-push web-deploy smoke-prod smoke-prod-live
 
 help: ## Show available targets
 	@uv run python -c "import re; [print(f'{m[0]:<18} {m[1]}') for m in re.findall(r'^([a-z-]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -127,6 +127,9 @@ seed: ## Write a sample live board into MinIO (real silver day replayed onto tod
 DAY ?= 2026-08-24
 parity-check: ## HF raw XML through the live code vs HF silver in MinIO for DAY (Phase 7; needs `make up`)
 	uv run python scripts/parity_check.py --day $(DAY)
+
+reconcile: ## Live silver (AWS, read) vs HF raw for DAYS="YYYY-MM-DD ..."; writes reports (local + S3)
+	uv run python scripts/reconcile_live.py --days $(DAYS) --data-bucket $(call tf_out,data_bucket) --region $(AWS_REGION)
 
 ingest-local: ## One live ingest run: real DB API (keys from .env) -> local MinIO bronze, plan cache, board (Phase 7)
 	uv run python scripts/live_jobs.py ingest
