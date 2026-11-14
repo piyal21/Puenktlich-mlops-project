@@ -21,7 +21,13 @@ from dbdelay.data.silver import SILVER_COLUMNS, make_event_id
 from dbdelay.data.stations import Station
 from dbdelay.timetables.parser import StopEvent
 
-DROP_REASONS = ("no_planned_time", "no_train_type", "not_supported_station", "duplicate")
+DROP_REASONS = (
+    "no_planned_time",
+    "no_train_type",
+    "not_supported_station",
+    "dst_ambiguous_or_nonexistent",
+    "duplicate",
+)
 
 
 @dataclass
@@ -80,10 +86,11 @@ class StopOutcome:
 
 
 def stop_outcome(stop: MergedStop) -> StopOutcome | None:
-    """What happened to a stop per its latest observations; ``None`` without a planned time."""
+    """What happened to a stop per its latest observations; ``None`` when unknown (no planned
+    time, or the latest change reported a time that had to be dropped)."""
     plan, change = stop.plan, stop.change
     planned = plan.planned_utc
-    if planned is None:
+    if planned is None or (change is not None and change.changed_time_dropped):
         return None
     cancelled = change.cancelled if change is not None else plan.cancelled
     changed = (change.changed_utc if change is not None else None) or planned
@@ -165,11 +172,14 @@ def to_silver(
     rows = []
     for stop in stops.values():
         plan = stop.plan
-        outcome = stop_outcome(stop)
-        if outcome is None:
+        if plan.planned_utc is None:
             drops["no_planned_time"] += 1
             continue
-        if outcome.planned.date() != day:
+        if plan.planned_utc.date() != day:
+            continue
+        outcome = stop_outcome(stop)
+        if outcome is None:  # the latest change reported a time that had to be dropped
+            drops["dst_ambiguous_or_nonexistent"] += 1
             continue
         if plan.eva not in names:
             drops["not_supported_station"] += 1

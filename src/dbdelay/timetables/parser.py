@@ -18,7 +18,7 @@ from dbdelay.errors import DataValidationError
 
 BERLIN = ZoneInfo("Europe/Berlin")
 STOP_ID = re.compile(r"(-?[0-9]+-[0-9]{10})-([1-9][0-9]*)")
-DROP_REASONS = ("no_departure", "bad_id", "dst_ambiguous_or_nonexistent")
+DROP_REASONS = ("no_departure", "bad_id", "bad_time", "dst_ambiguous_or_nonexistent")
 
 
 class StopEvent(BaseModel):
@@ -41,6 +41,9 @@ class StopEvent(BaseModel):
     planned_path: tuple[str, ...]
     changed_path: tuple[str, ...] | None  # None: no `cpth`; () : changed to empty (cancelled)
     distant_endpoint: str | None
+    # A `ct` was reported but dropped (DST-ambiguous/nonexistent or malformed): the delay is
+    # unknown, so silver must drop the stop instead of reading "no change" as on time.
+    changed_time_dropped: bool = False
 
 
 @dataclass(frozen=True)
@@ -89,15 +92,15 @@ def _parse_root(xml: bytes) -> Element:
     return root
 
 
-def _time(value: str | None) -> tuple[datetime | None, bool]:
-    """(UTC time or None, whether a present value had to be dropped)."""
+def _time(value: str | None) -> tuple[datetime | None, str | None]:
+    """(UTC time or None, drop reason when a present value had to be dropped)."""
     if not value:
-        return None, False
+        return None, None
     try:
         parsed = parse_db_time(value)
     except ValueError:
-        return None, True
-    return parsed, parsed is None
+        return None, "bad_time"
+    return parsed, (None if parsed is not None else "dst_ambiguous_or_nonexistent")
 
 
 def parse_timetable(xml: bytes, eva: str) -> ParseResult:
@@ -120,11 +123,11 @@ def parse_timetable(xml: bytes, eva: str) -> ParseResult:
             continue
         planned, planned_bad = _time(dp.get("pt"))
         changed, changed_bad = _time(dp.get("ct"))
-        if planned_bad:
-            drops["dst_ambiguous_or_nonexistent"] += 1
+        if planned_bad is not None:
+            drops[planned_bad] += 1
             continue
-        if changed_bad:
-            drops["dst_ambiguous_or_nonexistent"] += 1  # keep the stop, without a changed time
+        if changed_bad is not None:
+            drops[changed_bad] += 1  # keep the stop, flagged: silver drops it
         tl = stop.find("tl")
         category = None if tl is None else _text(tl.get("c"))
         cpth = dp.get("cpth")
@@ -145,6 +148,7 @@ def parse_timetable(xml: bytes, eva: str) -> ParseResult:
                 planned_path=_path(dp.get("ppth")),
                 changed_path=None if cpth is None else _path(cpth),
                 distant_endpoint=_text(dp.get("pde")),
+                changed_time_dropped=changed_bad is not None,
             )
         )
     return ParseResult(events=tuple(events), drops=drops)

@@ -132,3 +132,36 @@ def test_failed_calls_do_not_count_and_404_plan_counts_as_fetched(s3_store: Obje
     assert report.fchg_runs_ok == {KIEL: 0}
     assert report.empty_stations == [KIEL]
     assert silver(s3_store).empty
+
+
+def test_plan_404_hour_with_known_trains_is_a_gap(s3_store: ObjectStore) -> None:
+    # A 404 for an hour in which fchg shows a planned train means the plan was lost, not empty:
+    # only changed trains would survive, inflating the late rate.
+    keys = day_hour_keys(DAY)
+    at = START + timedelta(hours=1)
+    records = [
+        BronzeRecord("plan", KIEL, h, at, 404 if h == "26111211" else 200, plan_xml(), None)
+        for h in keys
+    ]
+    put(s3_store, "plan", at, records)
+    added = (
+        f'<s id="{STOP_A}" eva="{KIEL}"><tl c="RE" n="7"/>'
+        '<dp pt="2611121105" ct="2611121125" ppth="A|B"/></s>'
+    )
+    fchg_runs(
+        s3_store,
+        START,
+        START + timedelta(hours=27),
+        f'<timetable station="Kiel Hbf">{added}</timetable>',
+    )
+    report = run_etl(s3_store, STATIONS, DAY)
+    assert report.plan_hours_missing == {KIEL: ["26111211"]}
+    assert report.stations[0].volume_drop_days == ["2026-11-12"]
+
+
+def test_parser_drops_reach_the_report(s3_store: ObjectStore) -> None:
+    all_hours_empty(s3_store, START + timedelta(hours=1))
+    bad = '<timetable><s id="-4-2611120000-1"><tl c="RE" n="1"/><dp pt="26xx"/></s></timetable>'
+    plan_run(s3_store, START + timedelta(hours=2), {"26111211": bad})
+    report = run_etl(s3_store, STATIONS, DAY)
+    assert report.drops["parse_bad_time"] == 1

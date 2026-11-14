@@ -117,3 +117,22 @@ def test_changed_platform_path_and_category_normalised() -> None:
     assert stop.changed_platform == "4"
     assert stop.changed_path == ("A", "C", "D")
     assert stop.planned_path == ("A", "B")
+
+
+def test_ambiguous_changed_time_is_flagged_not_silently_cleared() -> None:
+    xml = (
+        b'<timetable><s id="1-2610250100-1"><tl c="RE" n="1"/>'
+        b'<dp pt="2610250150" ct="2610250210" ppth="A|B"/></s></timetable>'
+    )
+    (stop,) = parse_timetable(xml, KIEL).events
+    assert stop.changed_utc is None
+    assert stop.changed_time_dropped
+    assert parse_timetable(xml, KIEL).drops["dst_ambiguous_or_nonexistent"] == 1
+
+
+def test_malformed_time_counted_as_bad_time() -> None:
+    xml = b'<timetable><s id="1-2610250100-1"><tl c="RE" n="1"/><dp pt="26xx"/></s></timetable>'
+    result = parse_timetable(xml, KIEL)
+    assert result.events == ()
+    assert result.drops["bad_time"] == 1
+    assert result.drops["dst_ambiguous_or_nonexistent"] == 0

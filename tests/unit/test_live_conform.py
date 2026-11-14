@@ -185,3 +185,13 @@ def test_empty_input_gives_valid_empty_frame() -> None:
     frame, _ = to_silver({}, STATIONS, DAY)
     assert frame.empty
     validate_silver(frame)
+
+
+def test_change_with_dropped_time_drops_the_row_instead_of_on_time() -> None:
+    # e.g. ct=02:10 on 2026-10-25 (ambiguous): HF drops such rows; never label them on time
+    merger = StopMerger()
+    merger.add_plan(event(), SEEN)
+    merger.add_change(change(changed_time_dropped=True), SEEN)
+    frame, drops = to_silver(merger.stops(), STATIONS, DAY)
+    assert frame.empty
+    assert drops["dst_ambiguous_or_nonexistent"] == 1
