@@ -5,7 +5,7 @@
 <!-- Replace placeholders once the pieces exist. Never put invented numbers here. -->
 [![CI](https://img.shields.io/badge/CI-TBD-lightgrey)](#) [![Deploy](https://img.shields.io/badge/deploy-TBD-lightgrey)](#) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**🔗 Live demo:** `TBD` · **📈 Model Health:** `TBD/health` · **📘 API docs:** `TBD/api/docs`
+**🔗 Live demo:** https://d37lj2a19ugjqm.cloudfront.net · **📈 Model Health:** `TBD/health` · **📘 API docs:** https://d37lj2a19ugjqm.cloudfront.net/api/docs
 
 <!-- ![Screenshot of the departure board](docs/img/board.png) -->
 
@@ -388,7 +388,9 @@ Training snapshot + baseline (Phase 3): `make baseline` builds `gold/training_se
 
 Serving & UI (Phase 5): `make up` → `make seed` (sample live board: a real silver day replayed onto today) → `make app-up` (API on :8000, web app on :5173, compose profile `app`). `make api-dev` runs the API on the host with reload; `make web-check` lints, type-checks and tests the frontend (`npm --prefix frontend ci` once). Without a champion the board still shows departures with "No forecast".
 
-Cloud (Phase 6): the same API and website on AWS `eu-north-1` (Lambda container image, API Gateway, CloudFront, S3, SSM model pointer), all in Terraform under `infra/` and deployed from the laptop (section 10). Until live ingestion (Phase 7) a scheduled Lambda refreshes a clearly labelled sample board every 15 minutes. Public URL: https://d37lj2a19ugjqm.cloudfront.net The AWS Free plan ends on 2027-04-25; after that the site goes offline unless the plan is upgraded ([ADR 0002](docs/adr/0002-aws-account-type.md)).
+Cloud (Phase 6): the same API and website on AWS `eu-north-1` (Lambda container image, API Gateway, CloudFront, S3, SSM model pointer), all in Terraform under `infra/` and deployed from the laptop (section 10).
+
+Live data (Phase 7): every 15 minutes an `ingest` Lambda reads the DB Timetables API for the 30 stations (changes + missing timetable hours, ≤ 50 calls/min) and rewrites the public board; every night `etl_daily` turns yesterday into labelled silver with a gap-aware quality report. Live since 2026-11-18; the Phase 6 sample board stays available as a fallback (`board_mode = "sample"`). Public URL: https://d37lj2a19ugjqm.cloudfront.net The AWS Free plan ends on 2027-04-25; after that the site goes offline unless the plan is upgraded ([ADR 0002](docs/adr/0002-aws-account-type.md)).
 
 Training (Phase 4): `make train` runs snapshot → LightGBM → calibration → evaluation → MLflow registry → gate → release in one process; `make train-dag` triggers the same steps as the Airflow DAG `training_pipeline`. A promoted model lands in MinIO `models/<version>/` (SHA-256 manifest) and `models/_pointer.json`; `make rollback` swaps the champion back to the previous version.
 
@@ -405,6 +407,7 @@ Phase 6 deploys from the laptop (the current AWS account blocks GitHub OIDC, see
 5. With the local stack up (`make up`): `make upload-sample-days` and `make publish-model` (copies the local champion, sets the SSM pointer).
 6. `make tf-plan` → `make tf-apply` (Lambdas, HTTP API, 15-min sample-board schedule, CloudFront, alarms).
 7. `make web-deploy` → `make smoke-prod`. Roll back a model with `make rollback-prod`.
+8. Live data (Phase 7): DB API keys in `.env` → `make tf-plan-stage-a` → `make tf-apply` (jobs ECR) → `make put-db-api-secrets` (keys → SSM, never in Terraform) → `make jobs-image-push` and add `jobs_image_tag = "<tag>"` → `make tf-plan` → `make tf-apply` (ingest + nightly ETL, writes a hidden candidate board). After a good day set `board_mode = "live"` → `make tf-plan` → `make tf-apply` → `make smoke-prod-live`.
 
 Full details: [`docs/architecture.md`](docs/architecture.md) and [`docs/runbook.md`](docs/runbook.md).
 
