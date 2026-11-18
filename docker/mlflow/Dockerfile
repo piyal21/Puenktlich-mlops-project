@@ -1,7 +1,7 @@
 # MLflow tracking server + registry for the local training plane.
 # Adds the Postgres driver (backend store) and boto3 (MinIO artifact store).
 # Dependencies are fully locked with hashes in requirements.txt (regenerate: see its header).
-FROM python:3.12.14-slim
+FROM python:3.15.2-slim
 
 COPY --from=ghcr.io/astral-sh/uv:0.12.18 /uv /bin/uv
 COPY requirements.txt /tmp/requirements.txt
