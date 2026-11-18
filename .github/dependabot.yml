@@ -3,6 +3,14 @@
 # A `uv` PR that touches a runtime dependency of the Lambda images fails the `images` check until the
 # locked image requirements are regenerated: check out the PR branch, `make api-requirements
 # jobs-requirements`, commit, push.
+#
+# Ignored on purpose (each is a deliberate upgrade, not a weekly bump):
+# - pandas / pandas-stubs 3: the project pins pandas < 3 (rules.md stack, Airflow image).
+# - huggingface-hub 2: conflicts with packages preinstalled in the Airflow image (pyproject note).
+# - Python images beyond 3.12: Lambda runtime and project are pinned to Python 3.12.
+# - apache/airflow minor/major: the image installs under constraints-<version>; upgrade both together.
+# - mlflow (server image) minor/major: must move together with the mlflow-skinny training client
+#   (CHANGELOG known gap); mlflow-skinny is ignored for the same reason.
 version: 2
 updates:
   - package-ecosystem: uv
@@ -10,6 +18,15 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: pandas
+        update-types: ["version-update:semver-major"]
+      - dependency-name: pandas-stubs
+        update-types: ["version-update:semver-major"]
+      - dependency-name: huggingface-hub
+        update-types: ["version-update:semver-major"]
+      - dependency-name: mlflow-skinny
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
     groups:
       python-minor-patch:
         update-types: [minor, patch]
@@ -19,6 +36,9 @@ updates:
     directory: /docker/mlflow
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: mlflow
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /frontend
@@ -45,6 +65,13 @@ updates:
       - /pipelines/airflow
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: lambda/python
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: python
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: apache/airflow
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
 
   - package-ecosystem: terraform
     directories:
