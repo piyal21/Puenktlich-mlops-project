@@ -21,7 +21,7 @@ dependencies = [
 [project.optional-dependencies]
 # Installed in the Airflow image (and in the dev venv via the dev group); not in Lambda images.
 # <2: huggingface-hub 2.x conflicts with packages preinstalled in the Airflow image.
-pipelines = ["huggingface-hub>=0.30,<2"]
+pipelines = ["huggingface-hub>=0.30,<3"]
 # Training-only (Phase 3+): metrics/calibration; kept out of the Lambda image.
 training = [
     "lightgbm>=4.7.0",
@@ -52,7 +52,7 @@ dev = [
     "defusedxml>=0.7.1",
     "fastapi>=0.142.2",
     "httpx>=0.28.1",
-    "huggingface-hub>=0.30,<2",
+    "huggingface-hub>=0.30,<3",
     "jupyter>=1.1.1",
     "lightgbm>=4.7.0",
     "mangum>=0.22.0",
