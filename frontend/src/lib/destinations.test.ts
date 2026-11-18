@@ -65,3 +65,45 @@ describe("filterSummary", () => {
     expect(filterSummary(board, "Bonn", 6)).toBe("No trains to Bonn in the next 6 hours");
   });
 });
+
+describe("stops on the way (via, Phase 7)", () => {
+  const ice = makeDeparture({
+    event_id: "ice",
+    train: {
+      type: "ICE",
+      number: "1602",
+      line: null,
+      destination: "Berlin Hbf",
+      via: ["Erlangen", " Bamberg ", "Berlin Hbf"],
+    },
+  });
+
+  it("lists every stop ahead once, with the final stop", () => {
+    expect(destinationsOf([ice, to("Erlangen")])).toEqual(["Bamberg", "Berlin Hbf", "Erlangen"]);
+  });
+
+  it("matches a train that only passes through the chosen stop", () => {
+    expect(goingTo([ice, to("München Hbf")], "Bamberg").map((d) => d.event_id)).toEqual(["ice"]);
+  });
+
+  it("falls back to the final stop when via is missing (older API responses)", () => {
+    expect(goingTo([to("Erlangen")], "Erlangen")).toHaveLength(1);
+  });
+});
+
+describe("shortened routes", () => {
+  it("does not match the planned final stop the train now skips", () => {
+    const shortened = makeDeparture({
+      event_id: "short",
+      train: {
+        type: "RE",
+        number: "7",
+        line: null,
+        destination: "Berlin Hbf",
+        via: ["Erlangen", "Bamberg"],
+      },
+    });
+    expect(goingTo([shortened], "Berlin Hbf")).toHaveLength(0);
+    expect(goingTo([shortened], "Bamberg")).toHaveLength(1);
+  });
+});

@@ -3,6 +3,60 @@
 One entry per phase branch (owner rule, from Phase 2 on). Phases 0–1 are described in [`Phases/`](Phases/).
 Only measured numbers; anything not measured is `TBD`.
 
+## Phase 7 — Live data pipeline (`phase-7/live-pipeline`)
+
+**Built**
+- `dbdelay.timetables`: DB Timetables API client (httpx, 10 s timeout, tenacity retries on 429/5xx/network only),
+  sliding-window limiter (50 calls/min, every attempt counts), `defusedxml` parser for `plan`/`fchg`, bronze JSONL.gz.
+- `dbdelay.live`: plan cache (Berlin hours H−3…H+6, ≤ 70 plan calls/run, nearest first), live board builder with
+  `via`, 15-min ingest run (time budget, 429 stop, failed station keeps its previous *live* rows), nightly
+  bronze → silver `source=live` ETL (same contract and validation as HF), live quality report with the HF gap
+  fields (`low_volume_hours`, `stations[].volume_drop_days`) plus runs/gaps/plan-hours per station, HF raw
+  parity check and reconciliation (`make parity-check`, `make reconcile`).
+- `jobs` image (336.1 MB compressed) with `ingest` and `etl_daily` Lambdas, EMF metrics `EventsIngested`,
+  `EmptyStations`; Terraform: jobs ECR, 2 Lambdas with own roles, 2 schedules, 4 alarms, async retries,
+  `board_mode` switch (sample board kept for rollback), DB API keys in SSM SecureString **outside** Terraform.
+- API `train.via` + website "Going to (any stop on the way)" (additive, owner-approved); `make smoke-prod-live`.
+- Live on the public site since 2026-11-18 17:20 UTC.
+
+**Key decisions**
+- Owner (2026-11-12): all-stops "Going to" (`via`), deps httpx/tenacity/defusedxml, the AWS changes, threshold 95 %/95 %.
+- One 15-min run with a plan top-up instead of separate hourly/15-min runs (never two runs competing for 60 calls/min).
+- Parity first: our code on HF raw August data had to reproduce HF silver before going live → two rule changes
+  (fchg-only stops with planned time + category count; `final_destination` = last planned stop).
+- Gap detection lives in the quality report, not silver (schema unchanged); a departure is covered when its
+  station had a successful `fchg` within 3 h after the planned time; a plan-404 hour with known trains is a gap.
+- Safe cutover: a hidden `candidate` board for 4 days, then `board_mode = "live"`.
+- Owner (2026-11-14): standing OK for Phase 7 steps; ask only about cost.
+
+**Tested**
+- `make check`: 571 passed, coverage 97 %, ruff + mypy clean. `make web-check`: 70 passed. `make tf-scan`: 0 findings.
+- Parity (HF raw through our code vs HF silver): 2026-08-24 13,795/13,795 HF rows, 2026-08-25 13,718/13,718;
+  delay, is_late, destination 100 %; cancelled 99.86 % / 99.74 %.
+- Real runs: local ingest 100 calls in 70.5 s; AWS ingest 65 s / 266–301 MB peak (top-up runs), 7 s (changes only).
+  Nightly ETL (full days, AWS): 14–17 Nov 11,416–14,178 rows, 178–262 s, 349–402 MB peak, 0 flagged / empty stations.
+- Reconciliation (live silver vs HF raw, `make reconcile`): 15/16/17 Nov **PASS** — HF rows found 100 % / 100 % / 100 %,
+  is_late agreement 99.19 % / 95.51 % / 97.13 %, exact delay 94.57 % / 84.50 % / 90.27 %, destination 100 %.
+  Where delays differ, live has the later one in 95 % of rows (16 Nov: 1,925 vs 103; HF reports 0 in 1,727): HF
+  polls `fchg` about 5×/day and misses changes.
+- `make smoke-prod-live` 10/10; headless Chrome: "Live · Updated 18:20", 0 CSP violations.
+- Final review (opus): 1 Critical (DB keys in Terraform state) fixed; 4 Important fixed test-first (DST `ct`
+  labelled on time, no ingest time budget, sample rows into a live board, plan-404 hours); minors 6/7/8/10/13/14 fixed.
+
+**Known gaps / open items**
+- Owner: delete 4 old versions of `prod/terraform.tfstate` that still hold the DB API keys, then rotate the keys and
+  run `make put-db-api-secrets` (blocked for Claude by the auto-mode classifier).
+- HF history likely **undercounts lateness** (missed changes read as on time); consider in Phase 9 (training on live data).
+- ETL peak memory rising (349 → 402 MB of 512): watch; reduce if it passes ~450 MB.
+- Deferred minors: rollback to a pre-Phase-7 API image breaks a live board (`extra="forbid"` on `via`) — switch
+  `board_mode` to sample first; two ingest runs at once (`make ingest-local` / manual invoke during a scheduled run)
+  can exceed 60 calls/min; an empty-but-valid `fchg` reply counts as coverage.
+- Residual cancelled mismatch vs HF processing (0.1–0.3 %) unexplained.
+
+**Docs touched**
+- `docs/architecture.md` (§3.2, §7, §8, §9, §11, §16), `docs/prd.md` §6.3, `docs/phases.md`, README, CLAUDE.md,
+  `Phases/phase-7-live-pipeline.md`, `Phases/README.md`, spec + plan under `docs/superpowers/`.
+
 ## Phase 6 follow-up — "Going to" filter (`phase-6/destination-filter`)
 
 **Built**

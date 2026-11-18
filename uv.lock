@@ -242,6 +242,9 @@ wheels = [
 s3 = [
     { name = "mypy-boto3-s3" },
 ]
+ssm = [
+    { name = "mypy-boto3-ssm" },
+]
 
 [[package]]
 name = "botocore"
@@ -522,6 +525,11 @@ api = [
     { name = "lightgbm" },
     { name = "mangum" },
 ]
+jobs = [
+    { name = "defusedxml" },
+    { name = "httpx" },
+    { name = "tenacity" },
+]
 pipelines = [
     { name = "huggingface-hub" },
 ]
@@ -536,7 +544,8 @@ api-local = [
     { name = "uvicorn" },
 ]
 dev = [
-    { name = "boto3-stubs", extra = ["s3"] },
+    { name = "boto3-stubs", extra = ["s3", "ssm"] },
+    { name = "defusedxml" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "huggingface-hub" },
@@ -553,6 +562,8 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "scikit-learn" },
+    { name = "tenacity" },
+    { name = "types-defusedxml" },
     { name = "types-pyyaml" },
     { name = "uvicorn" },
 ]
@@ -561,9 +572,11 @@ dev = [
 requires-dist = [
     { name = "aws-lambda-powertools", specifier = ">=3.35,<4" },
     { name = "boto3", specifier = ">=1.43" },
+    { name = "defusedxml", marker = "extra == 'jobs'", specifier = ">=0.7.1" },
     { name = "duckdb", specifier = ">=1.5.5" },
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.142.2" },
     { name = "holidays", specifier = ">=0.105" },
+    { name = "httpx", marker = "extra == 'jobs'", specifier = ">=0.28.1" },
     { name = "huggingface-hub", marker = "extra == 'pipelines'", specifier = ">=0.30,<2" },
     { name = "lightgbm", marker = "extra == 'api'", specifier = ">=4.7.0" },
     { name = "lightgbm", marker = "extra == 'training'", specifier = ">=4.7.0" },
@@ -575,13 +588,15 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.15" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "scikit-learn", marker = "extra == 'training'", specifier = ">=1.9.1" },
+    { name = "tenacity", marker = "extra == 'jobs'", specifier = ">=9" },
 ]
-provides-extras = ["pipelines", "training", "api"]
+provides-extras = ["pipelines", "training", "api", "jobs"]
 
 [package.metadata.requires-dev]
 api-local = [{ name = "uvicorn", specifier = ">=0.54.0" }]
 dev = [
-    { name = "boto3-stubs", extras = ["s3"], specifier = ">=1.43" },
+    { name = "boto3-stubs", extras = ["s3", "ssm"], specifier = ">=1.43" },
+    { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "fastapi", specifier = ">=0.142.2" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "huggingface-hub", specifier = ">=0.30,<2" },
@@ -598,6 +613,8 @@ dev = [
     { name = "pytest-cov", specifier = ">=7.1" },
     { name = "ruff", specifier = ">=0.16" },
     { name = "scikit-learn", specifier = ">=1.9.1" },
+    { name = "tenacity", specifier = ">=9" },
+    { name = "types-defusedxml", specifier = ">=0.7.0.20260504" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20260906" },
     { name = "uvicorn", specifier = ">=0.54.0" },
 ]
@@ -1530,6 +1547,15 @@ wheels = [
 ]
 
 [[package]]
+name = "mypy-boto3-ssm"
+version = "1.43.126"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/75/74/7a4b536330c3e7541e26bd5de6149f21142bd7c3342f1c45363906e57d91/mypy_boto3_ssm-1.43.126.tar.gz", hash = "sha256:57b95fc78393bcc4ee26628101e9e492e0aa5f174fe1a4563372ba8c46b6984c", size = 98677, upload-time = "2026-11-06T23:29:26.251Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/97/85/6b6e99c68557985f654a92f5527bc95fff6ea1f58cb1bd3e74c02b117474/mypy_boto3_ssm-1.43.126-py3-none-any.whl", hash = "sha256:a711d62f511a7fd7ee2fd5cb0f8ca4bffd4b1ffeb25caff7958f8565b1566f74", size = 100345, upload-time = "2026-11-06T23:29:23.768Z" },
+]
+
+[[package]]
 name = "mypy-extensions"
 version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2451,6 +2477,15 @@ wheels = [
 ]
 
 [[package]]
+name = "tenacity"
+version = "9.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/9e/497c1c8ebe5a5b5d1d4a7511aea22c0bb1a97e3170d98abdef0e1b34265a/tenacity-9.2.1.tar.gz", hash = "sha256:a606b5c808d0cded4a359d5b9932d867ff2a6a6b64d37350260fd01bbdf83839", size = 58261, upload-time = "2026-10-07T12:13:01.633Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d6/26/1ff2b0721ac66a3ec5b1402b333110b352ab0a8724052ac279a7b82d40c4/tenacity-9.2.1-py3-none-any.whl", hash = "sha256:9e56f17539296baab7beabb08b92f6ee3d7be92d8be72d763360677c2ad6580e", size = 32310, upload-time = "2026-10-07T12:13:00.102Z" },
+]
+
+[[package]]
 name = "terminado"
 version = "0.18.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2533,6 +2568,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b4/de/4420db493fa8fc0856d5e5c1b159c63a323d2de2317babe36b01568928e8/typeguard-4.6.0.tar.gz", hash = "sha256:e7414f09111317de3e335de92cd397c5c0ca00b1cc1676de12e1d444a79b3f21", size = 82330, upload-time = "2026-07-26T08:40:23.207Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8f/eb/461d5f167b6f5c7d97696f397c82f82e3480e003fce3f0a1cd1dd26e2eb2/typeguard-4.6.0-py3-none-any.whl", hash = "sha256:79878165bb86f2cf5d41d159a0ff1792a796cf496882d2fe1b1c6c7049b9cdd7", size = 36884, upload-time = "2026-07-26T08:40:21.868Z" },
+]
+
+[[package]]
+name = "types-defusedxml"
+version = "0.7.0.20260504"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/da/d2/4553c8fa9cdebfe1e84b950cf790a4d2376a97fa016e43f7c65323fa6c7d/types_defusedxml-0.7.0.20260504.tar.gz", hash = "sha256:2ab2828a3f97111ba1c16cee273ad4124a831fc9198c41bf8368ff6ea48ad300", size = 10729, upload-time = "2026-05-04T05:22:50.192Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bf/2d/8a4b5ba1d732b8bc691f0efbb1c6f77cb5f6f473b2afe181d83d910773c5/types_defusedxml-0.7.0.20260504-py3-none-any.whl", hash = "sha256:a959e3a0a43b93e464bd625d91ec9193a2703ddc10443bdd627792485fae0b10", size = 13467, upload-time = "2026-05-04T05:22:49.319Z" },
 ]
 
 [[package]]

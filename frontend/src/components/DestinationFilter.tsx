@@ -7,7 +7,7 @@ interface Props {
   ref?: Ref<HTMLSelectElement>;
 }
 
-/** Narrows the board to one final stop. Matching stops along the way needs live data (Phase 7). */
+/** Narrows the board to trains that stop at one place, on the way or at the end. */
 export function DestinationFilter({ options, value, onChange, ref }: Props) {
   const id = useId();
   // Keep the choice selectable when the current time window has no train to it.
@@ -18,7 +18,7 @@ export function DestinationFilter({ options, value, onChange, ref }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <label htmlFor={id} className="text-sm font-medium">
-        Going to <span className="font-normal text-muted">(final stop of the train)</span>
+        Going to <span className="font-normal text-muted">(any stop on the way)</span>
       </label>
       <select
         ref={ref}

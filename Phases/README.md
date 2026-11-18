@@ -13,4 +13,5 @@ what actually happened.
 | 3 | Features & baseline — feature builder, gold snapshot, late-rate baseline + metrics | ✅ merged (`584f263`) | [phase-3-features-baseline.md](phase-3-features-baseline.md) |
 | 4 | Training, tracking, registry, gate — LightGBM + calibration, MLflow registry, promotion gate, release/rollback, Airflow DAG | ✅ merged (`d9ea889`) | [phase-4-training.md](phase-4-training.md) |
 | 5 | Local serving & UI — champion loader, FastAPI, sample board, Lambda/local image, React app | ✅ merged (`e87c47f`) | [phase-5-serving-ui.md](phase-5-serving-ui.md) |
-| 6 | Cloud infrastructure — Terraform, public CloudFront site, API on Lambda, SSM model pointer, sample board every 15 min | ✅ deployed, branch `phase-6/cloud-infra` | [phase-6-cloud-infra.md](phase-6-cloud-infra.md) |
+| 6 | Cloud infrastructure — Terraform, public CloudFront site, API on Lambda, SSM model pointer, sample board every 15 min | ✅ merged (PR #3, `459dee2`) | [phase-6-cloud-infra.md](phase-6-cloud-infra.md) |
+| 7 | Live data pipeline — DB API every 15 min, nightly live silver with gap flags, HF parity + reconciliation, "Going to" any stop | ✅ live 2026-11-18, branch `phase-7/live-pipeline` | [phase-7-live-pipeline.md](phase-7-live-pipeline.md) |

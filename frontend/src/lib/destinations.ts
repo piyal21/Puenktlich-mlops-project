@@ -1,21 +1,24 @@
 import type { Departure } from "../api/types";
 
-/** A train's final stop without padding; "" when unknown (blank names occur in real data). */
-function finalStop(departure: Departure): string {
-  return departure.train.destination?.trim() ?? "";
+/** Every stop a train still serves, trimmed, no blanks (blank names occur in real data). Live
+ * data: `via` (its last entry is the real end, also when the route was shortened). Sample data
+ * has no `via`, so only the final stop counts. */
+export function placesOf(departure: Departure): string[] {
+  const via = departure.train.via ?? [];
+  const names = via.length > 0 ? via : [departure.train.destination ?? ""];
+  return [...new Set(names.map((name) => name.trim()).filter((name) => name !== ""))];
 }
 
-/** Each final stop on the board once, in German alphabetical order. */
+/** Each place any train on the board goes to, once, in German alphabetical order. */
 export function destinationsOf(departures: Departure[]): string[] {
-  const names = new Set(departures.map(finalStop));
-  names.delete("");
+  const names = new Set(departures.flatMap(placesOf));
   return [...names].sort((a, b) => a.localeCompare(b, "de"));
 }
 
-/** The departures whose final stop is ``destination``; all of them when it is null. */
+/** The departures that stop at ``destination`` on the way or end there; all when it is null. */
 export function goingTo(departures: Departure[], destination: string | null): Departure[] {
   if (destination === null) return departures;
-  return departures.filter((d) => finalStop(d) === destination);
+  return departures.filter((d) => placesOf(d).includes(destination));
 }
 
 /** "hour" or "3 hours", for "in the next …". */

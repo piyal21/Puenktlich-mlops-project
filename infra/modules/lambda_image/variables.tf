@@ -36,3 +36,9 @@ variable "log_retention_days" {
   type    = number
   default = 14
 }
+
+variable "async_retries" {
+  description = "Lambda retries of a failed async (scheduled) invocation; null = AWS default (2)."
+  type        = number
+  default     = null
+}

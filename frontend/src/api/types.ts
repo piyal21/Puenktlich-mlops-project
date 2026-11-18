@@ -22,6 +22,8 @@ export interface Train {
   number: string | null;
   line: string | null;
   destination: string | null;
+  /** Stations after this one (live data, Phase 7); absent or empty for sample data. */
+  via?: string[];
 }
 export interface Departure {
   event_id: string;

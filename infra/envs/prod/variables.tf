@@ -32,3 +32,20 @@ variable "api_timeout_s" {
     error_message = "API Gateway HTTP APIs time out after 29 s."
   }
 }
+
+variable "jobs_image_tag" {
+  description = "Immutable jobs image tag (git SHA) pushed by `make jobs-image-push` (Phase 7)."
+  type        = string
+  default     = null
+}
+
+variable "board_mode" {
+  description = "Public board writer: \"sample\" (Phase 6 replay) or \"live\" (ingest). Owner switches."
+  type        = string
+  default     = "sample"
+
+  validation {
+    condition     = contains(["live", "sample"], var.board_mode)
+    error_message = "board_mode must be \"live\" or \"sample\"."
+  }
+}

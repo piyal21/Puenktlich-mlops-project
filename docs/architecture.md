@@ -126,9 +126,12 @@ s3://puenktlich-data-<acct>/                (private, SSE-S3, versioning on — 
 ├── samples/silver/departures/source=hf/date=…/part-0.parquet             # Phase 6: 9 real days for the sample board
 ├── bronze/timetables/kind=plan/date=YYYY-MM-DD/run=<ISO-ts>.jsonl.gz     # expire after 30 days
 ├── bronze/timetables/kind=fchg/date=YYYY-MM-DD/run=<ISO-ts>.jsonl.gz     # expire after 30 days
-├── live/plans/latest.json.gz                                             # overwritten hourly
+├── live/plans/latest.json.gz                                             # plan cache, Berlin hours H-3…H+6 (Phase 7)
 ├── live/boards/latest.json.gz                                            # overwritten every 15 min (contract: §7)
+├── live/boards/candidate.json.gz                                         # ingest's board while board_mode = "sample"
 ├── silver/departures/source=live/date=YYYY-MM-DD/part-0.parquet          # kept
+├── silver/_quality/source=live/date=YYYY-MM-DD.json                      # live quality report (gap flags)
+├── silver/_quality/source=live/reconciliation/date=YYYY-MM-DD.json       # live vs HF raw (make reconcile)
 └── control/
     ├── retrain_requested.json                                            # written by monitor
     └── history/<ISO-ts>-retrain_requested.json                           # archived by drift_watch
@@ -363,6 +366,10 @@ Locally (Phase 4) the bundle lives in the models bucket (`puenktlich-local`) and
   ] }
 ```
 
+Phase 7 addition (additive, owner-approved 2026-11-12): `train.via` = list of stations after this one
+(live data: changed path when reported, else planned; `[]` for sample data). The live board file rows carry
+the same optional `via`. "Going to" on the website matches any of them.
+
 Phase 5 additions (additive, owner-approved 2026-10-04): the board response also carries
 `"data_source": "sample" | "live"` and `"replayed_from": "2026-08-24" | null`, and each `prediction` carries
 `top_factors` (same shape as in `/predict`). Cancelled departures and every row while no champion is available get
@@ -407,12 +414,27 @@ profile `app`). The serving import path never loads scikit-learn (guard test).
 ## 8. Live ingestion (DB Timetables API)
 
 - Base URL: `https://apis.deutschebahn.com/db-api-marketplace/apis/timetables/v1`
-- Endpoints used: `GET /plan/{evaNo}/{YYMMDD}/{HH}`, `GET /fchg/{evaNo}`, `GET /station/{pattern}` (setup only).
-- Headers: `DB-Client-Id`, `DB-Api-Key`, `Accept: application/xml`. Credentials in SSM SecureString.
-- Response: XML (`timetable > s` elements; `ar`/`dp` children with `pt` = planned time, `ct` = changed time, format `YYMMDDHHmm`; `tl` = train info; `pp` = platform). Parse with **`defusedxml`** only.
-- Limit: free plan = **60 calls/min** → client-side limiter at **50 calls/min**, retries with exponential backoff + jitter on 429/5xx (max 3), per-station failure is logged and skipped (partial success is OK; the run reports counts).
-- Budget per run (30 stations): `changes` = 30 calls (~40 s) · `plan` = 90 calls (~2 min). Lambda timeout 5 min.
-- Each run writes **one** bronze object (JSONL.gz, one line per station call incl. HTTP status) → few S3 PUTs.
+- Endpoints used: `GET /plan/{evaNo}/{YYMMDD}/{HH}` (Berlin hour), `GET /fchg/{evaNo}` ("full changes").
+- Headers: `DB-Client-Id`, `DB-Api-Key`, `Accept: application/xml`. Keys live in two SSM SecureString
+  parameters (`/puenktlich/prod/db_api/{client_id,api_key}`) written by `make put-db-api-secrets` from `.env`.
+  They are **not** Terraform resources: the provider refreshes SecureString values into state.
+- Parse with **`defusedxml`** only (`dbdelay.timetables.parser`). Times are naive Berlin; DST-ambiguous or
+  nonexistent times are dropped and counted (a stop whose latest `ct` had to be dropped leaves silver).
+- Client: httpx (10 s timeout), tenacity retries on 429/5xx/timeouts/network errors only (max 3, exponential
+  backoff + jitter), every attempt passes a sliding-window limiter at **50 calls/min** (DB free plan: 60).
+- **One `ingest` run every 15 min** (Lambda `puenktlich-ingest`, jobs image, 512 MB, 300 s): `fchg` for all
+  30 stations, then a **plan top-up** of missing Berlin hours H, H+1 … H+6, H−1 … H−3, at most 70 calls per
+  run (≤ 100 calls ≈ 70 s). A run stops starting calls with < 45 s left and stops the top-up after a 429; it
+  always writes bronze, plan cache and board. A failed station keeps its rows from the previous *live* board.
+- Bronze: one JSONL.gz per run and kind (`kind=fchg|plan`), one line per call incl. HTTP status and raw XML.
+- Nightly `etl_daily` (03:30 Berlin): bronze → silver `source=live` for the previous UTC day, same contract and
+  validation as HF; latest observation wins; quality report with the same gap fields as HF (`low_volume_hours`,
+  `stations[].volume_drop_days`) plus live-only facts (runs per station, longest gap, plan hours missing).
+- Rules matched to HF's own processing by a parity check on HF `raw_data` (Phase 7, 2 August days, 100 %):
+  `fchg`-only stops count when they carry planned time and train category; `final_destination` = last *planned*
+  stop.
+- `board_mode` (Terraform): `"sample"` → ingest writes `live/boards/candidate.json.gz`, the sample board stays
+  public; `"live"` → ingest writes `latest.json.gz` and the sample schedule is off (its Lambda stays).
 
 ---
 
@@ -431,13 +453,16 @@ Daily `monitor` Lambda (04:30, after `etl_daily`):
    - `BrierDaily > champion test_brier × 1.10` for 3 consecutive days
    → write `control/retrain_requested.json` `{reason, metrics, requested_at}`.
 
-`ingest` emits `EventsIngested` per run.
+`ingest` emits `EventsIngested` per run; `etl_daily` emits `EmptyStations` (Powertools EMF, namespace
+`Puenktlich`, dimension `service`).
 
 ### Alarms (CloudWatch → SNS email)
 | Alarm | Condition |
 |---|---|
-| Ingestion stopped | `EventsIngested` sum = 0 over 60 min (missing data = breaching) |
-| Ingest errors | Lambda `Errors` > 0 for 2 consecutive runs |
+| Ingestion stopped | `EventsIngested` sum = 0 over 60 min (missing data = breaching) — live since Phase 7 |
+| Ingest errors | Lambda `Errors` > 0 in 2 consecutive 15-min periods — live since Phase 7 |
+| ETL errors | `etl_daily` Lambda `Errors` > 0 (1 day) — live since Phase 7 |
+| Empty stations | `EmptyStations` > 0 (a station had no departures yesterday: EVA drift or a feed gap) — Phase 7 |
 | API errors | API Gateway `5xx` > 5 in 5 min |
 | API throttling | Lambda `Throttles` > 0 |
 | Monitor missing | `LabeledEvents` missing for 26 h |
@@ -485,13 +510,13 @@ infra/
 │   └── *.tf            # tf-state bucket only (OIDC provider + CI roles: SCP-denied, ADR 0002)
 ├── modules/
 │   ├── data_lake/      # data + models buckets, lifecycle, encryption, public access block, TLS-only
-│   ├── ecr/            # api repo: immutable tags, scan on push, keep last 3 images
+│   ├── ecr/            # api + jobs repos: immutable tags, scan on push, keep last 3 images
 │   ├── lambda_image/   # generic container Lambda + own role + log group (14 d)
 │   ├── http_api/       # API Gateway HTTP API, throttling 10/20, access logs
-│   ├── schedules/      # EventBridge Scheduler (Europe/Berlin); Phase 6: sample board every 15 min
+│   ├── schedules/      # EventBridge Scheduler (Europe/Berlin): ingest every 15 min, etl_daily 03:30; sample board only in board_mode=sample
 │   ├── web_cdn/        # web bucket, CloudFront (OAC), /api/* behaviours, SPA rewrite function, headers
-│   ├── ssm/            # model pointer parameters (value "none", ignore_changes)
-│   ├── observability/  # SNS topic + email subscription, alarms (API 5xx, throttles, sample board)
+│   ├── ssm/            # model pointer parameters; DB API key names/ARNs only (values never in Terraform)
+│   ├── observability/  # SNS topic + email subscription, alarms (API 5xx, throttles, sample board, ingestion stopped, ingest/ETL errors, empty stations)
 │   └── budget/         # imported hand-made budget (credits/refunds excluded)
 └── envs/
     └── prod/
@@ -653,7 +678,7 @@ puenktlich/
 | CloudFront | < 1 GB | $0 (always free 1 TB) |
 | EventBridge Scheduler | ~4k invocations | $0 (14M free) |
 | CloudWatch | ≤ 10 metrics, ≤ 10 alarms, logs < 1 GB | $0 |
-| ECR | 386.8 MB per image (measured, compressed), ≤ 3 kept | ~$0.04–0.12 |
+| ECR | api 386.8 MB + jobs 336.1 MB per image (measured, compressed), ≤ 3 kept each | ~$0.07–0.22 |
 | SSM Standard params | 5 params | $0 |
 | **Total** | | **≈ $0.50 / month** |
 

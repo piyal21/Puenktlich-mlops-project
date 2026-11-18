@@ -92,3 +92,21 @@ def test_cors_origins_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CORS_ORIGINS", '["http://localhost:5173"]')
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
     assert settings.cors_origins == ["http://localhost:5173"]
+
+
+def test_live_settings_defaults() -> None:
+    settings = get_settings()
+    assert (
+        settings.db_api_base_url
+        == "https://apis.deutschebahn.com/db-api-marketplace/apis/timetables/v1"
+    )
+    assert settings.db_api_client_id_param is None
+    assert settings.db_api_key_param is None
+    assert settings.plan_call_budget == 70
+    assert settings.api_calls_per_min == 50
+
+
+def test_api_calls_per_min_rejects_above_60(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("API_CALLS_PER_MIN", "61")
+    with pytest.raises(ConfigError, match="api_calls_per_min"):
+        get_settings()

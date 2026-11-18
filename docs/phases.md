@@ -173,15 +173,15 @@ You learn: Terraform modules, remote state & locking, IAM least privilege, Cloud
 **Goal:** real departures flow in every 15 minutes, and yesterday becomes labeled silver data every night.
 
 Tasks
-- [ ] `dbdelay/timetables/client.py` (httpx, headers, timeouts), `ratelimit.py` (≤ 50 calls/min), `parser.py` (defusedxml; `plan` + `fchg`).
-- [ ] `jobs` image + handlers: `ingest.py` (modes `plan`, `changes`) → bronze JSONL.gz, `live/plans/latest`, `live/boards/latest`; emits `EventsIngested`.
-- [ ] `etl_daily.py`: bronze D-1 → silver `source=live` (same schema + validation as HF).
-- [ ] Terraform: `jobs` Lambdas, `schedules` module (EventBridge Scheduler, Europe/Berlin), IAM scoped per function, alarms "ingestion stopped" + "ingest errors".
-- [ ] **Reconciliation check:** for overlapping days, compare live silver vs. HF silver (match rate on `event_id`, delay agreement) and record it in the data-quality report.
+- [x] `dbdelay/timetables/client.py` (httpx, headers, timeouts), `ratelimit.py` (≤ 50 calls/min), `parser.py` (defusedxml; `plan` + `fchg`).
+- [x] `jobs` image + handlers (one 15-min run with a plan top-up instead of separate modes): `ingest.py` (modes `plan`, `changes`) → bronze JSONL.gz, `live/plans/latest`, `live/boards/latest`; emits `EventsIngested`.
+- [x] `etl_daily.py`: bronze D-1 → silver `source=live` (same schema + validation as HF).
+- [x] Terraform: `jobs` Lambdas, `schedules` module (EventBridge Scheduler, Europe/Berlin), IAM scoped per function, alarms "ingestion stopped" + "ingest errors".
+- [x] **Reconciliation check:** for overlapping days, compare live silver vs. HF silver (match rate on `event_id`, delay agreement) and record it in the data-quality report.
 
-Exit criteria
-- Board on the website shows real departures with `data_as_of` < 20 min.
-- 3 consecutive days of live silver written and validated; reconciliation ≥ agreed threshold (document the number).
+Exit criteria — ✅ met 2026-11-18
+- Board on the website shows real departures with `data_as_of` < 20 min. ✅ (`make smoke-prod-live` 10/10)
+- 3 consecutive days of live silver written and validated; reconciliation ≥ agreed threshold (document the number). ✅ 15–17 Nov; threshold 95 % HF rows found + 95 % is_late agreement; measured 100 % and 99.2 / 95.5 / 97.1 %.
 
 You learn: API-based ETL, rate limiting & retries, secrets management, scheduled serverless jobs, data reconciliation.
 

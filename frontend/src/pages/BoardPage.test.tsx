@@ -145,9 +145,11 @@ describe("Going to filter", () => {
     expect(screen.queryByRole("button", { name: /Erlangen/ })).not.toBeInTheDocument();
   });
 
-  it("says the filter matches the train's final stop", async () => {
+  it("says the filter matches any stop on the way", async () => {
     renderFilterBoard();
-    expect(await screen.findByRole("combobox", { name: /final stop/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("combobox", { name: /any stop on the way/i }),
+    ).toBeInTheDocument();
   });
 
   it("resets when the station changes", async () => {

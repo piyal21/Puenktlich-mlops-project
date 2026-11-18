@@ -15,6 +15,7 @@ from typing import Any, NamedTuple
 
 ERFURT = "8010101"
 TIMEOUT_S = 30
+LIVE_MAX_AGE = timedelta(minutes=20)  # the API marks a board stale after 20 min
 
 
 class Response(NamedTuple):
@@ -72,6 +73,21 @@ def board_is_sample(fetch: Fetch, base: str) -> str | None:
         return f"status {resp.status}"
     if data.get("data_source") != "sample" or data.get("stale") or not data.get("departures"):
         return f"source {data.get('data_source')!r}, stale {data.get('stale')!r}, empty board"
+    return None
+
+
+def board_is_live(fetch: Fetch, base: str, now: datetime) -> str | None:
+    """Phase 7: real departures, younger than 20 min, each train with a `via` list."""
+    resp, data = _get_json(fetch, base, f"/api/v1/stations/{ERFURT}/departures?hours=3")
+    if resp.status != HTTPStatus.OK or not isinstance(data, dict):
+        return f"status {resp.status}"
+    if data.get("data_source") != "live" or data.get("stale") or not data.get("departures"):
+        return f"source {data.get('data_source')!r}, stale {data.get('stale')!r}, empty board"
+    age = now - datetime.fromisoformat(data["data_as_of"])
+    if age > LIVE_MAX_AGE:
+        return f"data_as_of is {age} old"
+    if not all(isinstance(d.get("train", {}).get("via"), list) for d in data["departures"]):
+        return "a departure has no train.via list"
     return None
 
 
@@ -155,13 +171,28 @@ CHECKS: dict[str, Check] = {
 CHECKS_ORDER = list(CHECKS)
 
 
-def run(base: str, fetch: Fetch) -> list[tuple[str, str | None]]:
+def checks(*, expect_live: bool, now: datetime) -> dict[str, Check]:
+    """The check set; with ``expect_live`` the sample-board check becomes the live-board one."""
+    if not expect_live:
+        return CHECKS
+    live: Check = lambda fetch, base: board_is_live(fetch, base, now)  # noqa: E731
+    return {
+        ("board_is_live" if name == "board_is_sample" else name): (
+            live if name == "board_is_sample" else check
+        )
+        for name, check in CHECKS.items()
+    }
+
+
+def run(
+    base: str, fetch: Fetch, *, expect_live: bool = False, now: datetime | None = None
+) -> list[tuple[str, str | None]]:
     base = base.rstrip("/")
     results: list[tuple[str, str | None]] = []
-    for name, check in CHECKS.items():
+    for name, check in checks(expect_live=expect_live, now=now or datetime.now(UTC)).items():
         try:
             results.append((name, check(fetch, base)))
-        except (OSError, KeyError, TypeError, AttributeError) as exc:
+        except (OSError, KeyError, TypeError, AttributeError, ValueError) as exc:
             results.append((name, f"{type(exc).__name__}: {exc}"))
     return results
 
@@ -169,8 +200,9 @@ def run(base: str, fetch: Fetch) -> list[tuple[str, str | None]]:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Smoke-test the public site.")
     parser.add_argument("--base", required=True, help="https://<cloudfront domain>")
+    parser.add_argument("--expect-live", action="store_true", help="Phase 7: live board")
     args = parser.parse_args(argv)
-    results = run(args.base, http_fetch)
+    results = run(args.base, http_fetch, expect_live=args.expect_live)
     for name, reason in results:
         sys.stdout.write(f"PASS {name}\n" if reason is None else f"FAIL {name}: {reason}\n")
     return 1 if any(reason is not None for _, reason in results) else 0

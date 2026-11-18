@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -72,7 +72,7 @@ class SsmClient(Protocol):
         *,
         Name: str,
         Value: str,
-        Type: str,
+        Type: Literal["String"],
         Overwrite: bool,
     ) -> Mapping[str, Any]: ...
 
