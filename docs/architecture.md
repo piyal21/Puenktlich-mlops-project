@@ -491,8 +491,9 @@ flowchart LR
 
 - ✅ **Implemented (Phase 8, ADR 0002 route A):** `.github/workflows/ci.yml` — jobs `python` (make lint,
   typecheck, test), `frontend` (make web-check, build, npm audit), `terraform` (fmt, validate, tflint, trivy),
-  `security` (gitleaks over the full history, pip-audit on both Lambda requirement files), `images`
-  (requirements match `uv.lock`, docker build of both images). Actions pinned by commit SHA, token read-only.
+  `security` (gitleaks over the full history, pip-audit on both Lambda images + the MLflow image), `images`
+  (requirements match `uv.lock`, docker build of both images, Trivy image scan: fail on fixable
+  HIGH/CRITICAL). The python job also checks `uv lock --check`, runs pre-commit and fails below 80 % coverage. Actions pinned by commit SHA, token read-only.
   `main` is protected: PR + all 5 checks required, no force-push/deletion. Dependabot weekly (uv, npm,
   actions, docker, terraform). **No CD:** the account blocks GitHub OIDC, so deploys stay laptop `make`
   targets; `infra-plan.yml` and `cd.yml` below are the target design if route B or C is chosen later.
