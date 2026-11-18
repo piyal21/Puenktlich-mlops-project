@@ -524,6 +524,7 @@ api = [
     { name = "fastapi" },
     { name = "lightgbm" },
     { name = "mangum" },
+    { name = "scipy" },
 ]
 jobs = [
     { name = "defusedxml" },
@@ -562,6 +563,7 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "scikit-learn" },
+    { name = "scipy" },
     { name = "tenacity" },
     { name = "types-defusedxml" },
     { name = "types-pyyaml" },
@@ -588,6 +590,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.15" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "scikit-learn", marker = "extra == 'training'", specifier = ">=1.9.1" },
+    { name = "scipy", marker = "extra == 'api'", specifier = ">=1.18.1" },
     { name = "tenacity", marker = "extra == 'jobs'", specifier = ">=9" },
 ]
 provides-extras = ["pipelines", "training", "api", "jobs"]
@@ -613,6 +616,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=7.1" },
     { name = "ruff", specifier = ">=0.16" },
     { name = "scikit-learn", specifier = ">=1.9.1" },
+    { name = "scipy", specifier = ">=1.18.1" },
     { name = "tenacity", specifier = ">=9" },
     { name = "types-defusedxml", specifier = ">=0.7.0.20260504" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20260906" },

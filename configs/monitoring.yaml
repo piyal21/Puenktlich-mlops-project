@@ -1,0 +1,8 @@
+# Phase 9 daily monitoring (docs/superpowers/specs/2026-11-18-phase-9-monitoring-design.md §4).
+drift_threshold: 0.1      # a column is drifted when its score >= this (Evidently's default)
+drift_share_max: 0.30     # a day is drift-bad when the share of drifted content columns is above this
+brier_ratio_max: 1.10     # a day is performance-bad when BrierDaily / champion test Brier is above this
+consecutive_days: 3       # bad days in a row (same reason, same model) before a retrain is requested
+min_labeled_rows: 2000    # fewer labelled rows after gap filtering → `too_few_rows`, never counted
+ece_bins: 10
+history_max_days: 366     # entries kept in monitoring/history.json
