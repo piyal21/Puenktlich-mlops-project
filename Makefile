@@ -26,7 +26,7 @@ AWS_TARGETS := publish-model rollback-prod upload-sample-days put-db-api-secrets
 $(AWS_TARGETS) aws-check: export AWS_PROFILE := $(AWS_PROFILE)
 $(AWS_TARGETS) aws-check: export AWS_REGION := $(AWS_REGION)
 # Git Bash would rewrite "/*" and docker -v paths into Windows paths.
-$(AWS_TARGETS) tf-scan: export MSYS_NO_PATHCONV := 1
+$(AWS_TARGETS) tf-scan image-scan: export MSYS_NO_PATHCONV := 1
 # boto3 cannot read `aws login` sessions without botocore[crt]; the Python CLIs use a profile
 # whose credential_process asks the AWS CLI for them instead (no extra dependency).
 PY_AWS_TARGETS := publish-model rollback-prod upload-sample-days put-db-api-secrets reconcile
@@ -42,7 +42,7 @@ DOCKER_ECR_CONFIG := $(subst \,/,$(or $(HOME),$(USERPROFILE)))/.docker-puenktlic
 # Fail fast with one clear line when the 12 h `aws login` session is gone.
 $(AWS_TARGETS): aws-check
 
-.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed parity-check reconcile ingest-local etl-live-local jobs-requirements jobs-image-build jobs-image-push put-db-api-secrets app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply aws-check aws-py-profile image-push web-deploy smoke-prod smoke-prod-live
+.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed parity-check reconcile ingest-local etl-live-local jobs-requirements jobs-image-build jobs-image-push put-db-api-secrets app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan image-scan tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply aws-check aws-py-profile image-push web-deploy smoke-prod smoke-prod-live
 
 help: ## Show available targets
 	@uv run python -c "import re; [print(f'{m[0]:<18} {m[1]}') for m in re.findall(r'^([a-z-]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -76,7 +76,7 @@ typecheck: ## mypy (strict on src/dbdelay)
 	uv run mypy
 
 test: ## Unit tests with coverage (no network, no Docker)
-	uv run pytest tests/unit --cov --cov-report=term-missing
+	uv run pytest tests/unit --cov --cov-report=term-missing --cov-fail-under=80
 
 test-integration: ## Integration tests against the running local stack
 	uv run pytest tests/integration -m integration
@@ -174,6 +174,11 @@ tf-validate: ## Validate every Terraform root without touching state or AWS
 
 tf-scan: ## Trivy misconfiguration scan of infra/ (Docker image, pinned)
 	docker run --rm -v "$(CURDIR)/infra:/infra" $(TRIVY_IMAGE) config --exit-code 1 --ignorefile /infra/.trivyignore /infra
+
+# aws-lambda-rie is the local Lambda emulator inside AWS's base image; it never runs on Lambda.
+IMAGE_SCAN_SKIP := --skip-files /usr/local/bin/aws-lambda-rie
+image-scan: ## Trivy scan of built images, fail on fixable HIGH/CRITICAL (IMAGES="name:tag ...")
+	for i in $(IMAGES); do docker run --rm -v //var/run/docker.sock:/var/run/docker.sock $(TRIVY_IMAGE) image --quiet --exit-code 1 --ignore-unfixed --severity HIGH,CRITICAL $(IMAGE_SCAN_SKIP) $$i || exit 1; done
 
 tf-bootstrap-plan: ## Plan the Terraform state bucket (read-only); saves bootstrap.tfplan
 	terraform -chdir=$(TF_BOOT) init -input=false
