@@ -3,7 +3,7 @@
 > **Will my train leave on time?** Pünktlich shows, for upcoming departures at German stations, the probability that the train leaves **6 or more minutes late**. The model is trained on hundreds of millions of historical stop events, monitored every day against what really happened, and retrained automatically when the world changes.
 
 <!-- Replace placeholders once the pieces exist. Never put invented numbers here. -->
-[![CI](https://img.shields.io/badge/CI-TBD-lightgrey)](#) [![Deploy](https://img.shields.io/badge/deploy-TBD-lightgrey)](#) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![CI](https://github.com/piyal21/Puenktlich-mlops-project/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/piyal21/Puenktlich-mlops-project/actions/workflows/ci.yml) [![Deploy](https://img.shields.io/badge/deploy-laptop%20(make)-lightgrey)](docs/adr/0002-aws-account-type.md) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 **🔗 Live demo:** https://d37lj2a19ugjqm.cloudfront.net · **📈 Model Health:** `TBD/health` · **📘 API docs:** https://d37lj2a19ugjqm.cloudfront.net/api/docs
 
@@ -332,7 +332,7 @@ See the full [model card](docs/model_card.md).
 
 ## 7. Security
 
-- **No long-lived cloud keys:** CI uses GitHub OIDC; the deploy role only trusts the protected `production` environment.
+- **No long-lived cloud keys:** GitHub holds no AWS credentials at all; CI only runs checks (the account blocks GitHub OIDC, ADR 0002) and deploys run from the laptop with a 12 h `aws login` session.
 - **Least privilege:** one IAM role per function, scoped to exact bucket prefixes and parameters.
 - **Secrets:** DB API credentials live in SSM Parameter Store (encrypted), never in git or logs.
 - **Private storage:** all buckets block public access; the website is served only through CloudFront (Origin Access Control) with security headers (HSTS, CSP, …).

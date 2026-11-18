@@ -1,6 +1,10 @@
 # Jobs image (Phase 7): ingest + nightly ETL Lambdas (Phase 9 adds monitor). Build context: repo root.
 # linux/amd64 like Lambda x86_64. Each Lambda picks its handler via image_config.command.
-FROM public.ecr.aws/lambda/python:3.12@sha256:517bcc7dc1a3ba62e324961c1563cc54a2bd6dc1060188f9d376211ecb7b2926
+FROM public.ecr.aws/lambda/python:3.12@sha256:a53086fc3118c5457097083ba3d1ccf1d8fdfcba9e7a90fbfc5d2b06c625215b
+
+# OS security fixes newer than the pinned base image (CI fails on fixable HIGH/CRITICAL, Phase 8).
+# AL2023 locks updates to the image's release unless --releasever=latest.
+RUN dnf upgrade -y --releasever=latest && dnf clean all
 
 # Hash-pinned, exported from uv.lock (`make jobs-requirements`).
 COPY services/jobs/requirements.txt /tmp/requirements.txt

@@ -3,6 +3,47 @@
 One entry per phase branch (owner rule, from Phase 2 on). Phases 0–1 are described in [`Phases/`](Phases/).
 Only measured numbers; anything not measured is `TBD`.
 
+## Phase 8 — CI/CD, route A (`phase-8/ci-cd`)
+
+**Built**
+- `.github/workflows/ci.yml` on every PR and push to `main` (read-only token, no AWS access, actions pinned by SHA,
+  no persisted checkout token): `python` (uv lock check, ruff, mypy, unit tests with an 80 % coverage gate,
+  pre-commit), `frontend` (lint, types, Vitest, build, `npm audit --omit=dev`), `terraform` (fmt, validate, tflint,
+  Trivy config), `security` (gitleaks over the full history, pip-audit on both Lambda images and the MLflow image),
+  `images` (requirements match `uv.lock`, docker build of both images, Trivy image scan).
+- `main` protected: PR + all 5 checks required, no force-push or deletion (owner keeps admin override).
+- `.github/dependabot.yml`: weekly uv, pip (MLflow image), npm, GitHub Actions, Docker, Terraform.
+- `make image-scan`; README CI badge.
+- Security fixes found by the new checks and deployed to AWS: opentelemetry-api 1.45.2, certifi 2026.10.23,
+  vite (npm audit fix), current Lambda base image + `dnf upgrade --releasever=latest`, MLflow image packages
+  (all but mlflow), version pins in all 9 Terraform modules (tflint).
+
+**Key decisions**
+- Owner (2026-11-18): route A of ADR 0002 — checks only in GitHub, deploys stay laptop `make` targets (the account
+  blocks GitHub OIDC; B is an irreversible paid upgrade, C a new account). No `infra-plan.yml` / `cd.yml`.
+- Image scan fails on *fixable* HIGH/CRITICAL only; `/usr/local/bin/aws-lambda-rie` (local emulator in AWS's base
+  image, never runs on Lambda) is skipped.
+- MLflow 3.16.1 server advisories (GHSA-j7qq-vr8c-xvw3, GHSA-2wqp-q3c6-ccj5, GHSA-wqmh-qccw-pqwf) are ignored in CI
+  with a written reason: local-only server on 127.0.0.1; upgrade together with the mlflow-skinny training client.
+
+**Tested**
+- PR #5: all 5 jobs green on the final commit (python 3m50s, images 3m11s, terraform 45s, frontend 34s, security 18s).
+- Locally: pip-audit clean (Lambda images), npm audit 0 vulnerabilities, tflint 0 issues, gitleaks 135 commits no leaks,
+  `make image-scan` exit 0 on both images, pre-commit all hooks passed.
+- AWS after the security rollout: 4 Lambdas updated (api 388.6 MB, jobs 338.6 MB compressed), `make smoke-prod-live` 10/10.
+- Review (opus): 0 Critical, 4 Important fixed (lock check, image scan, coverage gate, Dependabot/requirements note).
+
+**Known gaps / open items**
+- No automated deploys (route A). Dependabot `uv` PRs that touch Lambda runtime deps need `make api-requirements
+  jobs-requirements` on the PR branch before the `images` check passes.
+- MLflow server 3.16.1 advisories (local-only) until the server + client upgrade.
+- `make test-dags` and integration tests still run only locally (need Docker/the local stack).
+- From Phase 7: owner to delete 4 old state versions holding the DB API keys and rotate the keys.
+
+**Docs touched**
+- `docs/adr/0002-aws-account-type.md` (decision A), `docs/architecture.md` §10, `docs/phases.md`, README (badges,
+  security line), CLAUDE.md, `Phases/phase-8-ci-cd.md`, `Phases/README.md`.
+
 ## Phase 7 — Live data pipeline (`phase-7/live-pipeline`)
 
 **Built**
