@@ -192,16 +192,16 @@ You learn: API-based ETL, rate limiting & retries, secrets management, scheduled
 **Goal:** every change is checked automatically, and merging to `main` deploys safely.
 
 Tasks
-- [ ] **First:** decide the GitHub → AWS route (ADR 0002: A laptop-only deploys · B Paid plan + advanced features · C new classic account); OIDC is SCP-denied on the current account.
-- [ ] `ci.yml`: Python (ruff, mypy, pytest + coverage), frontend (lint, typecheck, vitest, build), Terraform (fmt, validate, tflint), security (gitleaks, pip-audit, npm audit, trivy config), docker build for both images.
-- [ ] `infra-plan.yml`: on PRs touching `infra/`, `terraform plan` with `gh-plan` role, post as PR comment.
-- [ ] `cd.yml` (environment `production`): OIDC → build/push images (tag = SHA) → trivy image scan → `terraform apply` → frontend build + S3 sync + CloudFront invalidation → smoke test.
-- [ ] Branch protection on `main`; Dependabot for pip, npm, GitHub Actions, Docker.
-- [ ] README badges (CI status).
+- [x] **First:** decide the GitHub → AWS route — **A (owner, 2026-11-18)**: (ADR 0002: A laptop-only deploys · B Paid plan + advanced features · C new classic account); OIDC is SCP-denied on the current account.
+- [x] `ci.yml`: Python (ruff, mypy, pytest + coverage), frontend (lint, typecheck, vitest, build), Terraform (fmt, validate, tflint), security (gitleaks, pip-audit, npm audit, trivy config), docker build for both images.
+- [ ] ~~`infra-plan.yml`~~ — not possible on route A (needs AWS access from GitHub): on PRs touching `infra/`, `terraform plan` with `gh-plan` role, post as PR comment.
+- [ ] ~~`cd.yml`~~ — not possible on route A; deploys stay laptop `make` targets: OIDC → build/push images (tag = SHA) → trivy image scan → `terraform apply` → frontend build + S3 sync + CloudFront invalidation → smoke test.
+- [x] Branch protection on `main`; Dependabot for pip, npm, GitHub Actions, Docker.
+- [x] README badges (CI status).
 
-Exit criteria
-- A PR shows green checks + a Terraform plan comment; merging deploys and the smoke test passes.
-- No AWS access keys stored in GitHub.
+Exit criteria (route A)
+- A PR shows green checks ✅ (PR #5: 5/5). Plan comment and deploy-on-merge: not applicable on route A.
+- No AWS access keys stored in GitHub ✅ (none; the workflow has no AWS access).
 
 You learn: CI/CD design, OIDC federation, image scanning, deployment gates, supply-chain hygiene.
 

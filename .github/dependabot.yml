@@ -1,5 +1,8 @@
 # Weekly dependency update PRs (Phase 8). Minor/patch updates are grouped per ecosystem to keep the
 # PR count small; every Dependabot PR runs the full CI. Major updates arrive one by one for review.
+# A `uv` PR that touches a runtime dependency of the Lambda images fails the `images` check until the
+# locked image requirements are regenerated: check out the PR branch, `make api-requirements
+# jobs-requirements`, commit, push.
 version: 2
 updates:
   - package-ecosystem: uv
@@ -10,6 +13,12 @@ updates:
     groups:
       python-minor-patch:
         update-types: [minor, patch]
+
+  # The local MLflow image (pip-compile with hashes).
+  - package-ecosystem: pip
+    directory: /docker/mlflow
+    schedule:
+      interval: weekly
 
   - package-ecosystem: npm
     directory: /frontend

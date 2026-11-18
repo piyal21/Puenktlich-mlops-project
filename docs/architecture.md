@@ -489,9 +489,13 @@ flowchart LR
   FE --> SM["smoke test<br/>/api/v1/health, /api/v1/model"]
 ```
 
-- ⚠️ **Current account (ADR 0002):** an AWS-managed SCP denies creating the GitHub OIDC provider, so CD to
-  AWS is not possible yet; Phase 6 deploys from the laptop (`make` targets, `aws login`). The route
-  (laptop-only / Paid plan + advanced features / new classic account) is decided before Phase 8.
+- ✅ **Implemented (Phase 8, ADR 0002 route A):** `.github/workflows/ci.yml` — jobs `python` (make lint,
+  typecheck, test), `frontend` (make web-check, build, npm audit), `terraform` (fmt, validate, tflint, trivy),
+  `security` (gitleaks over the full history, pip-audit on both Lambda requirement files), `images`
+  (requirements match `uv.lock`, docker build of both images). Actions pinned by commit SHA, token read-only.
+  `main` is protected: PR + all 5 checks required, no force-push/deletion. Dependabot weekly (uv, npm,
+  actions, docker, terraform). **No CD:** the account blocks GitHub OIDC, so deploys stay laptop `make`
+  targets; `infra-plan.yml` and `cd.yml` below are the target design if route B or C is chosen later.
 - **Auth (target design):** GitHub OIDC → two IAM roles created in `infra/bootstrap`:
   - `puenktlich-gh-plan` — read-only, trusted for `pull_request` on this repo.
   - `puenktlich-gh-deploy` — deploy permissions, trusted only for `repo:<owner>/puenktlich:environment:production`.

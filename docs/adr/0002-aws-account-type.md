@@ -45,13 +45,17 @@ Center), and AWS manages the organization's service control policies (SCPs). Wha
    publish to an `aws/sns`-encrypted topic), no WAF (not available here, ~$5+/month), default
    CloudFront certificate (no custom domain), no X-Ray (needs `xray:*` on `*`). Revisit in Phase 10.
 
-## Options considered for GitHub → AWS (decided before Phase 8)
+## Options considered for GitHub → AWS — **decided 2026-11-18 (owner): A**
 
 | Option | For | Against |
 |---|---|---|
 | A. Laptop-only deploys; CI runs checks only | Free, no account change | Portfolio loses automated CD |
 | B. Paid plan + advanced features | Full control (OIDC, Frankfurt possible) | **Irreversible**; usage above credits is billed |
 | C. New classic account ("Sign up for AWS (advanced)") | Matches the original design | Second account, other email; Terraform re-applies everything there |
+
+Phase 8 implements A: `.github/workflows/ci.yml` runs every check on each PR and on `main` (no AWS
+access, read-only token); branch protection requires those checks; deploys stay laptop `make`
+targets with `aws login`. B or C can still be chosen later; the workflow then gains a deploy job.
 
 ## Consequences
 
