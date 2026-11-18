@@ -50,6 +50,10 @@ jobs:
     name: terraform (fmt, validate, tflint, trivy)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      # The real tags live in the git-ignored tfvars on the laptop; validate needs some value.
+      TF_VAR_api_image_tag: ci-validate
+      TF_VAR_jobs_image_tag: ci-validate
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
