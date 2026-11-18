@@ -200,7 +200,7 @@ blinker==1.9.0 \
 boto3==1.43.101 \
     --hash=sha256:49f3eb750f70e050df9929a7e9392e67896c97d7d0a448f13ed3354c634268bd \
     --hash=sha256:8a899b0ea94df3f2fab6d0c69caf2791f2971449696834374d8e88ced01c7ef3
-    # via -r docker/mlflow/requirements.in
+    # via -r requirements.in
 botocore==1.43.127 \
     --hash=sha256:93bae360fb3a6f1b8e36593faa8bbbfa05b19866f7a37e9606a98f13394156f8 \
     --hash=sha256:aa0e3188679a2164a2098a14ea9b59520520cb573aaee9999d852480691e134a
@@ -1298,17 +1298,17 @@ matplotlib==3.11.2 \
     --hash=sha256:f2ac30cf5eb5dff1b584627ae0b0e1186551a4f69ae3c75073911da497a29170 \
     --hash=sha256:fea03cf56568cc1cba08b470be6a0559e71c3a5b688d54b7179bb35ba23d0821
     # via mlflow
-mlflow==3.16.1 \
-    --hash=sha256:044bd17d49ed216d3e38a537436622154daa5197ea41c1f3dedf155cbd8f40c0 \
-    --hash=sha256:e4dfe69ceae31dfc7b8480e76ffe6a7f36752bdfac30e058e6430ade1fb5920b
-    # via -r docker/mlflow/requirements.in
-mlflow-skinny==3.16.1 \
-    --hash=sha256:41ec1697710b91d001f8951bdc2d00391a277065ed82268c81706238fa2b918e \
-    --hash=sha256:7298b47942b1b0e826e02191653b8c203c3bb242fb699f8beec98e928dbec115
+mlflow==3.18.0 \
+    --hash=sha256:04e912d5b154b417c5930ba47ef3dc2f74738fb3ba93e3d70499955ec8884540 \
+    --hash=sha256:be7d84ba0d0b12392f5b53260cdb3e6d7b7ef4b80c29da90a89b5a1f6db7102f
+    # via -r requirements.in
+mlflow-skinny==3.18.0 \
+    --hash=sha256:2653292a390d399ee2dd49e81380a89b16265a05747eb5ea0e6c1b7987e398dd \
+    --hash=sha256:93715e152061e0ecabcc9aa70330b296141a806de9da6b2c29cff8703b00608f
     # via mlflow
-mlflow-tracing==3.16.1 \
-    --hash=sha256:315ba1ace00d43498da2ad2b2bbb751f3198d6f9cd328168dfeb49911df41925 \
-    --hash=sha256:b3ab97c7b4f919704e0cbe0653e6e9b89cf1f8a790f8bb1b4cf7f236df258e9e
+mlflow-tracing==3.18.0 \
+    --hash=sha256:1e8300b2718be455de2765ea1db293603636bc3fc38852f0ba25d61761616d27 \
+    --hash=sha256:bd756183ee73ec5964a806e2f8cb87cc13689252a51cf09833b25cf9df110d42
     # via mlflow
 multidict==7.2.1 \
     --hash=sha256:02009b402129a73e1f3da68f48eb999afbacd29f25aef0d5052b84ff5c2786a2 \
@@ -1950,7 +1950,7 @@ psycopg2-binary==2.9.13 \
     --hash=sha256:f4cdfe41149dcc5583a3b7a2f0ad433f75bb3afd1c7a7332e63df89b05e34666 \
     --hash=sha256:f818161d2302b3b3e9c75d5a1d0a5c5679e92e45cfec6432b9d5432dde5ff1f1 \
     --hash=sha256:feb7b1856f6ca805cc0e08739858f6cdfed8ce903390126af30343c62899a389
-    # via -r docker/mlflow/requirements.in
+    # via -r requirements.in
 pyarrow==25.0.1 \
     --hash=sha256:0b1edbb2f385a6a65e9711b62ba86ac54a7816a3f8d17bb3e8a5929d65fb2485 \
     --hash=sha256:0b726ad7e7b669be982b0c71c07fe4b037d654354130da79a7902a669e93a66b \
@@ -2172,6 +2172,10 @@ python-dateutil==2.9.0.post0 \
 python-dotenv==1.2.4 \
     --hash=sha256:42269a8a5b3fd54ffa6f3d84b18abed50064717576b4ecf03dc4a55d8aa04fdc \
     --hash=sha256:f0d53e69935a851c0dcc78f3ab7aaccd8cabef0b92382b576b824212902873c0
+    # via mlflow-skinny
+python-multipart==0.0.34 \
+    --hash=sha256:b998ae90ca6e1e363261ce2e0e230281b8af53867b757970abd69ee9edcd843a \
+    --hash=sha256:ebacd224bd686eee2f9aa1066a657affe07435a185834e05e5235e2e59173e91
     # via mlflow-skinny
 pyyaml==6.0.3 \
     --hash=sha256:00c4bdeba853cc34e7dd471f16b4114f4162dc03e6b7afcc2128711f0eca823c \
