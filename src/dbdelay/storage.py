@@ -178,3 +178,26 @@ class ObjectStore:
                     yield obj["Key"]
         except (ClientError, BotoCoreError) as exc:
             raise ExternalServiceError(f"list s3://{self.bucket}/{prefix} failed") from exc
+
+
+def get_optional_bytes(store: ObjectStore, key: str) -> bytes | None:
+    """The object, or None when it does not exist.
+
+    Roles without ``s3:ListBucket`` get 403 AccessDenied (not 404) for a missing key, so that
+    counts as missing too (Phase 7 lesson). Other failures still raise.
+
+    Raises:
+        ExternalServiceError: for any storage failure other than a missing key.
+    """
+    try:
+        return store.get_bytes(key)
+    except NotFoundError:
+        return None
+    except ExternalServiceError as exc:
+        cause = exc.__cause__
+        if isinstance(cause, ClientError) and cause.response.get("Error", {}).get("Code") in {
+            "AccessDenied",
+            "403",
+        }:
+            return None
+        raise

@@ -6,11 +6,11 @@ from typing import Any
 import pandas as pd
 import pytest
 
+from dbdelay.data.live_report import live_silver_key
 from dbdelay.data.silver import SILVER_ARROW_SCHEMA, to_parquet_bytes
 from dbdelay.data.stations import Station
 from dbdelay.live import parity
 from dbdelay.live.conform import StopMerger, to_silver
-from dbdelay.live.etl import live_silver_key
 from dbdelay.storage import ObjectStore
 from dbdelay.timetables.parser import StopEvent
 

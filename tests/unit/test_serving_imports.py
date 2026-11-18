@@ -1,4 +1,7 @@
-"""The serving path must import without scikit-learn (slim API image, spec §5)."""
+"""The serving path (API image) must import without packages that image does not install.
+
+scikit-learn (slim API image, Phase 5 spec §5); jobs-image and training-only packages (Phase 9:
+the monitor runs on the API image)."""
 
 import os
 import subprocess
@@ -21,6 +24,9 @@ SERVING_MODULES = [
     "dbdelay.monitoring.config",
     "dbdelay.monitoring.performance",
     "dbdelay.monitoring.drift",
+    "dbdelay.monitoring.history",
+    "dbdelay.monitoring.triggers",
+    "dbdelay.monitoring.job",
     "app.main",
 ]
 
@@ -29,7 +35,7 @@ import importlib, importlib.abc, sys
 
 class _Block(importlib.abc.MetaPathFinder):
     def find_spec(self, name, path=None, target=None):
-        if name == "sklearn" or name.startswith("sklearn."):
+        if name.split(".")[0] in {"sklearn", "defusedxml", "httpx", "tenacity", "mlflow"}:
             raise ImportError(f"blocked: {name}")
         return None
 

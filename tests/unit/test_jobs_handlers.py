@@ -10,10 +10,10 @@ from moto import mock_aws
 import etl_handler
 import ingest_handler
 from dbdelay.config import Settings
+from dbdelay.data.live_report import LiveQualityReport
 from dbdelay.errors import ConfigError, ExternalServiceError
 from dbdelay.live import jobs
 from dbdelay.live.ingest import IngestResult
-from dbdelay.live.quality import LiveQualityReport
 
 
 def _metric_lines(text: str) -> list[dict[str, Any]]:
