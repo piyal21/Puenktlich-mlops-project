@@ -235,4 +235,10 @@ details within `design.md`; how the DAG archives the flag; plan task order.
 
 ## 9. Measurements behind the calls
 
-- Evidently spike (2026-11-18, python:3.12-slim, `evidently` latest + pandas < 3 + lightgbm): TBD.
+- Evidently spike (2026-11-18, python:3.12-slim, linux/amd64, `evidently` 0.7.23 + pandas 2.3.3 + lightgbm):
+  site-packages 976 MB; pulls litestar, uvicorn, nltk, plotly 5.24.1, scikit-learn 1.9.1, statsmodels 0.15.0
+  (scipy 1.18.1 is already in the API image). `import evidently`: **+177 MB RSS (121 → 298 MB) and 7.7 s**;
+  `DataDriftPreset` on 14 k current / 50 k reference rows: 2.7 s, peak 344 MB; HTML report 4.1 MB.
+  Its default tests for this size are the same ones §4.1 computes with scipy (`ValueDrift(...,
+  method=Wasserstein distance (normed))`, Jensen–Shannon for categoricals). Putting it in the API image
+  would add ~7.7 s to the public API's cold start and ~177 MB to a 512 MB Lambda → rejected.
