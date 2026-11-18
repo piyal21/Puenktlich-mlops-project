@@ -1,6 +1,8 @@
+import io
 from datetime import date
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from dbdelay.errors import ArtifactIntegrityError
@@ -9,6 +11,7 @@ from dbdelay.registry.artifacts import (
     BUNDLE_FILES,
     MANIFEST_FILE,
     load_bundle,
+    load_reference_sample,
     models_prefix,
     sha256_ref,
     write_bundle,
@@ -114,3 +117,35 @@ def test_invalid_metrics_json_fails_closed(
     write_bundle(s3_store, manifest, broken)
     with pytest.raises(ArtifactIntegrityError, match="parse"):
         load_bundle(s3_store, "1")
+
+
+def _with_reference(bundle_files: dict[str, bytes]) -> dict[str, bytes]:
+
+    buffer = io.BytesIO()
+    pd.DataFrame({"eva": ["8000105", "8000261"], "p_late": [0.1, 0.4]}).to_parquet(buffer)
+    return bundle_files | {"reference_sample.parquet": buffer.getvalue()}
+
+
+def test_load_reference_sample_returns_rows(
+    s3_store: ObjectStore, bundle_files: dict[str, bytes]
+) -> None:
+    files = _with_reference(bundle_files)
+    write_bundle(s3_store, bundle_manifest(files), files)
+    sample = load_reference_sample(s3_store, "1")
+    assert list(sample["eva"]) == ["8000105", "8000261"]
+    assert list(sample["p_late"]) == [0.1, 0.4]
+
+
+def test_load_reference_sample_verifies_checksum(
+    s3_store: ObjectStore, bundle_files: dict[str, bytes]
+) -> None:
+    files = _with_reference(bundle_files)
+    write_bundle(s3_store, bundle_manifest(files), files)
+    s3_store.put_bytes(models_prefix("1") + "reference_sample.parquet", b"PAR1tampered")
+    with pytest.raises(ArtifactIntegrityError, match="reference_sample"):
+        load_reference_sample(s3_store, "1")
+
+
+def test_load_reference_sample_missing_version(s3_store: ObjectStore) -> None:
+    with pytest.raises(ArtifactIntegrityError, match="manifest missing"):
+        load_reference_sample(s3_store, "9")

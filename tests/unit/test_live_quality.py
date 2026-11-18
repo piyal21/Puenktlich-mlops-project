@@ -3,11 +3,11 @@ from typing import Any
 
 import pandas as pd
 
+from dbdelay.data.gaps import gap_masks
 from dbdelay.data.stations import Station
 from dbdelay.live.conform import StopMerger, to_silver
 from dbdelay.live.quality import LiveQualityReport, build_live_report, day_hour_keys
 from dbdelay.timetables.parser import StopEvent
-from dbdelay.training.split import gap_masks
 
 DAY = date(2026, 11, 12)
 START = datetime(2026, 11, 12, tzinfo=UTC)

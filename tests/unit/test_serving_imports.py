@@ -17,6 +17,10 @@ SERVING_MODULES = [
     "dbdelay.serving.explain",
     "dbdelay.serving.scoring",
     "dbdelay.serving.stations",
+    "dbdelay.data.gaps",
+    "dbdelay.monitoring.config",
+    "dbdelay.monitoring.performance",
+    "dbdelay.monitoring.drift",
     "app.main",
 ]
 

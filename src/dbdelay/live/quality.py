@@ -1,7 +1,7 @@
 """Daily quality report for live silver, with the gap fields training already reads.
 
 `low_volume_hours` (Berlin "%Y-%m-%dT%H") and `stations[].volume_drop_days` (UTC days) have the
-same meaning for `training.split.gap_masks` as in the HF monthly reports. Live rule (Phase 7):
+same meaning for `data.gaps.gap_masks` as in the HF monthly reports. Live rule (Phase 7):
 a departure is *covered* when its station had a successful `fchg` call within 3 h after the planned
 time; otherwise "no change reported ⇒ on time" may be wrong (risk #1).
 - station-day flagged: any uncovered departure, or any Berlin hour of the day without a plan;

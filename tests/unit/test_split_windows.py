@@ -3,6 +3,7 @@ from datetime import date
 import pandas as pd
 import pytest
 
+from dbdelay.data.gaps import gap_masks
 from dbdelay.errors import DataValidationError
 from dbdelay.training.config import (
     BaselineConfig,
@@ -10,7 +11,7 @@ from dbdelay.training.config import (
     FeatureConfig,
     TrainingConfig,
 )
-from dbdelay.training.split import assign_split, compute_windows, gap_masks
+from dbdelay.training.split import assign_split, compute_windows
 from tests.builders import PHASE4_SECTIONS, quality_report
 
 
