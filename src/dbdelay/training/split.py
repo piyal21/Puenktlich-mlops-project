@@ -239,11 +239,20 @@ def build_snapshot(
     if cfg.exclude_data_gaps:
         quality_months = sorted({f"{d:%Y-%m}" for d, src in sources.items() if src == "hf"})
         live_days = sorted(d for d, src in sources.items() if src == "live")
-        reports: list[GapReport] = [
-            *_load_reports(store, quality_months, root),
-            *_load_live_reports(store, live_days, root),
-        ]
-        in_hour, in_day = gap_masks(rows, reports)
+        # Each source's gap flags apply only to that source's rows (spec §4.5): a later HF
+        # monthly report must not drop live rows on days live serves.
+        by_source: dict[str, list[GapReport]] = {
+            "hf": [*_load_reports(store, quality_months, root)],
+            "live": [*_load_live_reports(store, live_days, root)],
+        }
+        in_hour = pd.Series(False, index=rows.index, dtype="bool")
+        in_day = pd.Series(False, index=rows.index, dtype="bool")
+        for source, reports in by_source.items():
+            part = (rows["source"] == source).to_numpy()
+            if part.any():
+                hour_part, day_part = gap_masks(rows.loc[part], reports)
+                in_hour.loc[part] = hour_part.to_numpy()
+                in_day.loc[part] = day_part.to_numpy()
         excluded["gap_hours"] = int(in_hour.sum())
         excluded["gap_station_days"] = int((in_day & ~in_hour).sum())
         rows = rows[~(in_hour | in_day)].reset_index(drop=True)

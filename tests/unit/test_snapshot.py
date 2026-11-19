@@ -212,3 +212,18 @@ def test_live_fills_a_day_hf_lacks(s3_store: ObjectStore, tmp_path: Path) -> Non
     cfg = MARCH_CONFIG.model_copy(update={"end_date": date(2026, 4, 1)})
     manifest = build_snapshot(s3_store, cfg, tmp_path)
     assert manifest.rows_by_source["live"] == 5
+
+
+def test_hf_report_gaps_do_not_drop_live_rows(s3_store: ObjectStore, tmp_path: Path) -> None:
+    # Final review: a later HF monthly report flagging a day served by live must not drop live rows.
+    put_march_silver(s3_store)
+    report = quality_report(
+        "2026-03",
+        low_volume_hours=["2026-03-16T08", "2026-03-31T11"],
+        drop_days={"8000105": ["2026-03-20", "2026-03-31"]},
+    )
+    s3_store.put_bytes(quality_key("2026-03"), report.model_dump_json().encode())
+    _put_live(s3_store, "2026-03-31", 6)
+    manifest = build_snapshot(s3_store, MARCH_CONFIG, tmp_path)
+    assert manifest.splits["test"].rows == 24 + 6
+    assert manifest.excluded["gap_hours"] == 4
