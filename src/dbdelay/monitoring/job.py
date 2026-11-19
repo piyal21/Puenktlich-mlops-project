@@ -116,6 +116,8 @@ def _score(
     rows: pd.DataFrame,
     cfg: MonitoringConfig,
 ) -> tuple[DayStatus, PerformanceMetrics, DriftResult | None]:
+    if rows.empty:  # e.g. every station-day flagged as a gap (2026-11-13, the first live day)
+        return "too_few_rows", PerformanceMetrics(rows=0), None
     features = build_features(rows, bundle.spec)
     p = bundle.calibrator.apply(predict_raw(bundle.booster, features))
     y = rows["is_late"].to_numpy(dtype=bool)

@@ -226,3 +226,16 @@ def test_forced_flag_keeps_history_verdicts(stores: ObjectStore) -> None:
     assert outcome.flag_written is not None
     assert outcome.flag_written.forced
     assert all(not e.verdict.drift_bad for e in _history(stores))
+
+
+def test_all_rows_in_gaps_is_too_few_rows(stores: ObjectStore) -> None:
+    # Real case (2026-11-13, the first live day): every station-day was flagged as a gap.
+    evas = ["8000105", "8000261"]  # SIGNAL_STATIONS
+    stations = [{"eva": eva, "rows": 0, "volume_drop_days": ["2026-11-16"]} for eva in evas]
+    silver = _put_day(stores, DAY, stations=stations)
+    assert set(silver["eva"]) <= set(evas)
+    r = _run(stores).result
+    assert r.status == "too_few_rows"
+    assert r.performance.rows == 0
+    assert r.performance.brier is None
+    assert r.excluded_rows["gap_station_day"] == 200
