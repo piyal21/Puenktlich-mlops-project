@@ -1,5 +1,6 @@
 import hashlib
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +10,9 @@ import yaml
 from dbdelay.config import get_settings
 from dbdelay.data.stations import load_stations
 from dbdelay.errors import ArtifactIntegrityError, DataValidationError
+from dbdelay.monitoring.control import decision_key
+from dbdelay.monitoring.history import RetrainRecord
+from dbdelay.monitoring.job import FLAG_KEY
 from dbdelay.registry.artifacts import BUNDLE_FILES, models_prefix
 from dbdelay.registry.pointer import ObjectStorePointer
 from dbdelay.registry.release import CHALLENGER, CHAMPION
@@ -19,6 +23,7 @@ from dbdelay.training.pipeline import PipelineContext, run_training_pipeline
 from dbdelay.training.split import SNAPSHOT_FILE, snapshot_prefix
 from tests.builders import SIGNAL_CONFIG, WEAK_LIGHTGBM, put_signal_silver
 from tests.fakes import FakeTracker
+from tests.unit.test_monitoring_control import request
 
 REPO = Path(__file__).resolve().parents[2]
 STATIONS = tuple(load_stations(REPO / "configs" / "stations.yaml"))
@@ -190,3 +195,31 @@ def test_model_version_carries_lineage_tags(signal_store: ObjectStore, tmp_path:
         "snapshot_id": result.snapshot_id,
         "gate_result": "passed",
     }
+
+
+def test_record_decision_released_and_rejected(signal_store: ObjectStore, tmp_path: Path) -> None:
+    now = datetime(2026, 11, 20, 9, 0, tzinfo=UTC)
+    flag = request("picked_up", forced=True)
+    signal_store.put_bytes(FLAG_KEY, flag.model_dump_json().encode())
+    tracker = FakeTracker()
+    first = run_training_pipeline(_ctx(signal_store, tracker, tmp_path / "a"))
+    ctx = _ctx(signal_store, tracker, tmp_path / "c")
+    released = pipeline.record_decision(ctx, flag.request_id, first.run_id, first.version, now)
+    assert released.decision == "released"
+    assert (released.champion_before, released.champion_after) == (None, "1")
+    assert released.challenger_version == "1"
+    assert released.reason == "performance"
+    assert released.forced
+    assert released.requested_at == flag.requested_at
+    assert (
+        RetrainRecord.model_validate_json(signal_store.get_bytes(decision_key(flag.request_id)))
+        == released
+    )
+
+    second = run_training_pipeline(_ctx(signal_store, tracker, tmp_path / "b"))
+    rejected = pipeline.record_decision(ctx, "scheduled-2026-12-01", second.run_id, "2", now)
+    assert rejected.decision == "rejected"
+    assert rejected.failed_checks == ["brier_vs_champion"]
+    assert (rejected.champion_before, rejected.champion_after) == ("1", "1")
+    assert rejected.reason == "scheduled"
+    assert not rejected.forced

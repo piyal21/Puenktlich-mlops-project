@@ -29,6 +29,9 @@ from dbdelay.errors import ArtifactIntegrityError, DataValidationError
 from dbdelay.features.build import build_features
 from dbdelay.features.spec import FeatureSpec, fit_spec
 from dbdelay.logging import get_logger
+from dbdelay.monitoring.control import write_decision
+from dbdelay.monitoring.history import RetrainRecord
+from dbdelay.monitoring.job import read_flag
 from dbdelay.registry.artifacts import BUNDLE_FILES, build_manifest, load_bundle
 from dbdelay.registry.pointer import ObjectStorePointer, PointerState
 from dbdelay.registry.release import CHALLENGER, release_version
@@ -492,6 +495,34 @@ def smoke_test(ctx: PipelineContext, snapshot_id: str, run_id: str, version: str
         if not in_range or float(np.max(np.abs(got - expected))) > SMOKE_TOLERANCE:
             raise ArtifactIntegrityError(f"smoke test failed for models/{version}")
     ctx.tracker.finish_run(run_id)
+
+
+def record_decision(
+    ctx: PipelineContext, request_id: str, run_id: str, version: str, now: datetime
+) -> RetrainRecord:
+    """Write `control/decisions/<request_id>.json` for a gated run (released or rejected).
+
+    The retrain flag supplies reason/forced/requested_at when it carries ``request_id``;
+    otherwise the run was scheduled (`@monthly`) or started by hand.
+    """
+    gate = GateDecision.model_validate_json(ctx.tracker.load_bytes(run_id, GATE_FILE))
+    flag = read_flag(ctx.data_store)
+    request = flag if flag is not None and flag.request_id == request_id else None
+    pointer = ObjectStorePointer(ctx.model_store, ctx.root).get()
+    record = RetrainRecord(
+        request_id=request_id,
+        reason=request.reason if request else "scheduled",
+        forced=request.forced if request else False,
+        requested_at=request.requested_at if request else now,
+        decided_at=now,
+        decision="released" if gate.passed else "rejected",
+        challenger_version=version,
+        champion_before=gate.champion_version,
+        champion_after=pointer.champion_version if pointer else None,
+        failed_checks=gate.failed,
+    )
+    write_decision(ctx.data_store, record)
+    return record
 
 
 def run_training_pipeline(ctx: PipelineContext) -> PipelineResult:

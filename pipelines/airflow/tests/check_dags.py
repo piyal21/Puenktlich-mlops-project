@@ -49,6 +49,7 @@ TRAINING_TASKS = {
     "record_rejection",
     "release",
     "smoke_test",
+    "record_decision",
 }
 training = bag.dags.get("training_pipeline")
 if training is None:
@@ -65,6 +66,22 @@ else:
             errors.append("evaluate must wait for train_baseline")
         if downstream["release"] != {"smoke_test"}:
             errors.append("smoke_test must follow release")
+        if not (
+            "record_decision" in downstream["smoke_test"]
+            and "record_decision" in downstream["record_rejection"]
+        ):
+            errors.append("record_decision must follow both gate branches")
+watch = bag.dags.get("drift_watch")
+if watch is None:
+    errors.append("drift_watch not found")
+else:
+    found = {t.task_id for t in watch.tasks}
+    if found != {"pick_up", "run_training", "finish"}:
+        errors.append(f"unexpected drift_watch tasks: {sorted(found)}")
+    elif watch.max_active_runs != 1:
+        errors.append("drift_watch must run one at a time")
+    elif watch.get_task("finish").trigger_rule != "all_done":
+        errors.append("drift_watch.finish must run even when training fails")
 # TaskFlow arguments must not be named like context keys (e.g. `run_id`): Airflow raises
 # "is a part of kwargs and therefore reserved" only when the task runs.
 reserved = set(Context.__annotations__)

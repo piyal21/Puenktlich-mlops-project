@@ -4,7 +4,8 @@
 Thin orchestration only; every step is a function in `dbdelay.training.pipeline`. The MLflow run
 carries the model between tasks; XCom carries ids only. Task arguments must not use Airflow
 context names (`run_id` is the DAG run's id), hence `mlflow_run_id`. A rejected challenger
-ends green.
+ends green. Phase 9: `record_decision` writes `control/decisions/<request_id>.json` after either
+branch; `request_id` comes from the triggering `drift_watch` run's conf (else "scheduled-<date>").
 """
 
 from collections.abc import Callable
@@ -14,7 +15,7 @@ from typing import Any
 from airflow.sdk import dag, task
 
 
-def _run(step: Callable[..., Any], *args: str) -> Any:
+def _run(step: Callable[..., Any], *args: Any) -> Any:
     """Run one pipeline step with a fresh context and temp dir."""
     import tempfile
     from pathlib import Path
@@ -26,6 +27,23 @@ def _run(step: Callable[..., Any], *args: str) -> Any:
     cfg = load_training_config(get_settings().training_config_file)
     with tempfile.TemporaryDirectory() as tmp:
         return step(make_context(cfg, Path(tmp)), *args)
+
+
+def _record_decision(registered: dict[str, str], conf: dict[str, Any]) -> None:
+    """Decision record for this run; `request_id` from drift_watch's conf, else scheduled."""
+    from datetime import UTC, datetime
+
+    from dbdelay.training import pipeline
+
+    now = datetime.now(UTC)
+    request_id = str(conf.get("request_id") or f"scheduled-{now:%Y-%m-%d}")
+    _run(
+        pipeline.record_decision,
+        request_id,
+        registered["mlflow_run_id"],
+        registered["version"],
+        now,
+    )
 
 
 @dag(
@@ -109,6 +127,12 @@ def training_pipeline() -> None:
 
         _run(pipeline.smoke_test, snapshot_id, registered["mlflow_run_id"], registered["version"])
 
+    @task(trigger_rule="none_failed_min_one_success")
+    def record_decision(registered: dict[str, str]) -> None:
+        from airflow.sdk import get_current_context
+
+        _record_decision(registered, get_current_context()["dag_run"].conf or {})
+
     snapshot_id = validate_snapshot(build_training_set())
     baseline = train_baseline(snapshot_id)
     evaluated = evaluate(snapshot_id, calibrate(snapshot_id, train_lightgbm(snapshot_id)))
@@ -116,8 +140,11 @@ def training_pipeline() -> None:
     registered = register(evaluated)
     branch = gate(registered)
     released = release(registered)
-    branch >> [record_rejection(registered), released]
-    released >> smoke_test(snapshot_id, registered)
+    rejected = record_rejection(registered)
+    branch >> [rejected, released]
+    smoked = smoke_test(snapshot_id, registered)
+    released >> smoked
+    [rejected, smoked] >> record_decision(registered)
 
 
 training_pipeline()
