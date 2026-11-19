@@ -128,3 +128,24 @@ def test_emits_labeled_events_zero_on_no_data(
     assert metric["LabeledEvents"] == [0.0]
     for name in ("BrierDaily", "AUCDaily", "BrierRatio", "DriftShare"):
         assert name not in metric
+
+
+def test_scheduler_envelope_means_yesterday(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Real failure 2026-11-19 03:30 UTC: EventBridge Scheduler without input sends this envelope.
+    calls = _capture(monkeypatch, "ok")
+    envelope = {
+        "version": "0",
+        "id": "326afe6d-3826-4e0b-b0fb-813938903e1a",
+        "detail-type": "Scheduled Event",
+        "source": "aws.scheduler",
+        "account": "000000000000",
+        "time": "2026-11-19T03:30:00Z",
+        "region": "eu-north-1",
+        "resources": [
+            "arn:aws:scheduler:eu-north-1:000000000000:schedule/default/puenktlich-monitor"
+        ],
+        "detail": "{}",
+    }
+    monitor_handler.handler(envelope, CTX)
+    assert calls[0]["day"] == datetime.now(UTC).date() - timedelta(days=1)
+    assert calls[0]["overrides"] is None

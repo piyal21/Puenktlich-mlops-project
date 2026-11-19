@@ -46,8 +46,15 @@ def _emit(outcome: MonitorOutcome) -> None:
     metrics.flush_metrics()
 
 
+def _payload(event: dict[str, Any] | None) -> dict[str, Any]:
+    """Manual payload, or {} for EventBridge Scheduler's envelope (a target without input)."""
+    if not event or event.get("source") == "aws.scheduler":
+        return {}
+    return event
+
+
 def handler(event: dict[str, Any] | None, context: object) -> dict[str, Any]:
-    request = MonitorEvent.model_validate(event or {})
+    request = MonitorEvent.model_validate(_payload(event))
     now = datetime.now(UTC)
     day = request.day or (now - timedelta(days=1)).date()
     settings = get_settings()

@@ -122,6 +122,7 @@ resource "aws_scheduler_schedule" "monitor" {
   target {
     arn      = var.monitor_function_arn
     role_arn = aws_iam_role.scheduler.arn
+    input    = jsonencode({}) # without input, Scheduler sends its event envelope
 
     retry_policy {
       maximum_retry_attempts = 1 # idempotent: re-running a day replaces its results
