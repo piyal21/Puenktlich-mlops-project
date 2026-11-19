@@ -34,6 +34,7 @@ gate:                         # architecture §5.4; challenger Brier must be str
   max_brier_regression_vs_champion: 0.00
   max_auc_drop_vs_champion: 0.005
   max_slice_auc_drop: 0.02                  # per train_type
+  min_slice_rows: 2000                      # judge only train types with >= 2000 test rows (owner 2026-11-19)
   min_test_rows: 20000
 registry:
   model_name: puenktlich-delay

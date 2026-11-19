@@ -25,6 +25,9 @@
   --cancelled-soft: #eceef1;
   --card-shadow: 0 1px 2px rgb(14 23 38 / 0.06), 0 1px 1px rgb(14 23 38 / 0.04);
   --overlay: rgb(14 23 38 / 0.45);
+  /* Chart series (dataviz validator: light pair PASS on #ffffff, dark pair PASS on #131a24). */
+  --series-1: #2f5bea;
+  --series-2: #eb6834;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -51,6 +54,8 @@
     --cancelled-soft: #1f2632;
     --card-shadow: none;
     --overlay: rgb(0 0 0 / 0.6);
+    --series-1: #3987e5;
+    --series-2: #d95926;
   }
 }
 
@@ -77,6 +82,8 @@
   --cancelled-soft: #1f2632;
   --card-shadow: none;
   --overlay: rgb(0 0 0 / 0.6);
+  --series-1: #3987e5;
+  --series-2: #d95926;
 }
 
 @theme inline {

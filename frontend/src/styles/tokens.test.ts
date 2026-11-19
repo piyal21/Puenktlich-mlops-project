@@ -49,4 +49,10 @@ describe("design tokens", () => {
       expect(contrast(a as string, b as string)).toBeGreaterThanOrEqual(4.5);
     }
   });
+  // WCAG 2.1 AA 1.4.11: chart lines are graphics, so 3:1 against the chart surface.
+  it.each(["--series-1", "--series-2"])("%s on --surface meets 3:1 in both themes", (fg) => {
+    for (const theme of [light, dark]) {
+      expect(contrast(theme[fg] as string, theme["--surface"] as string)).toBeGreaterThanOrEqual(3);
+    }
+  });
 });

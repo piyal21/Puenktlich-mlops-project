@@ -14,6 +14,7 @@ from dbdelay.errors import NotFoundError
 from dbdelay.registry.pointer import make_pointer
 from dbdelay.serving.board import BoardSource
 from dbdelay.serving.model_loader import ModelProvider
+from dbdelay.serving.monitoring import MonitoringSource
 from dbdelay.storage import ObjectStore, make_s3_client
 
 _BUILD_LOCK = threading.Lock()
@@ -29,6 +30,7 @@ class ServingDeps:
     stations: tuple[Station, ...]
     models: ModelProvider
     board: BoardSource
+    monitoring: MonitoringSource
     clock: Callable[[], datetime] = field(default=_utc_now)
 
     @classmethod
@@ -43,6 +45,7 @@ class ServingDeps:
                 model_store, make_pointer(settings, model_store), ttl_s=settings.model_pointer_ttl_s
             ),
             board=BoardSource(data_store, settings.board_key, ttl_s=settings.board_ttl_s),
+            monitoring=MonitoringSource(data_store),
         )
 
     def station(self, eva: str) -> Station:

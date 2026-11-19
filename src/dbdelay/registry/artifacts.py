@@ -4,6 +4,7 @@ Loaders verify every checksum and fail closed.
 """
 
 import hashlib
+import io
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -25,6 +26,7 @@ from dbdelay.training.report import TrainingReport
 from dbdelay.training.train import booster_from_text, predict_raw
 
 MANIFEST_FILE = "manifest.json"
+REFERENCE_FILE = "reference_sample.parquet"
 BUNDLE_FILES: tuple[str, ...] = (
     "model.txt",
     "calibrator.json",
@@ -128,8 +130,20 @@ def read_bundle_files(
             unlisted file, or checksum mismatch.
     """
     prefix = models_prefix(version, root)
+    manifest = _read_manifest(store, version, root)
+    present = {key[len(prefix) :] for key in store.iter_keys(prefix)}
+    unlisted = sorted(present - set(manifest.files) - {MANIFEST_FILE})
+    if unlisted:
+        raise ArtifactIntegrityError(f"models/{version}: unlisted files {unlisted}")
+    files = {name: _verified_file(store, manifest, name, root) for name in manifest.files}
+    return manifest, files
+
+
+def _read_manifest(store: ObjectStore, version: str, root: str) -> Manifest:
     try:
-        manifest = Manifest.model_validate_json(store.get_bytes(prefix + MANIFEST_FILE))
+        manifest = Manifest.model_validate_json(
+            store.get_bytes(models_prefix(version, root) + MANIFEST_FILE)
+        )
     except NotFoundError:
         raise ArtifactIntegrityError(f"models/{version}: manifest missing") from None
     except ValidationError:
@@ -139,20 +153,34 @@ def read_bundle_files(
             f"models/{version}: manifest is for version {manifest.version}"
         )
     _check_names(set(manifest.files))
-    present = {key[len(prefix) :] for key in store.iter_keys(prefix)}
-    unlisted = sorted(present - set(manifest.files) - {MANIFEST_FILE})
-    if unlisted:
-        raise ArtifactIntegrityError(f"models/{version}: unlisted files {unlisted}")
-    files: dict[str, bytes] = {}
-    for name, expected in manifest.files.items():
-        try:
-            data = store.get_bytes(prefix + name)
-        except NotFoundError:
-            raise ArtifactIntegrityError(f"models/{version}: {name} missing") from None
-        if sha256_ref(data) != expected:
-            raise ArtifactIntegrityError(f"models/{version}: checksum mismatch for {name}")
-        files[name] = data
-    return manifest, files
+    return manifest
+
+
+def _verified_file(store: ObjectStore, manifest: Manifest, name: str, root: str) -> bytes:
+    version = manifest.version
+    try:
+        data = store.get_bytes(models_prefix(version, root) + name)
+    except NotFoundError:
+        raise ArtifactIntegrityError(f"models/{version}: {name} missing") from None
+    if sha256_ref(data) != manifest.files[name]:
+        raise ArtifactIntegrityError(f"models/{version}: checksum mismatch for {name}")
+    return data
+
+
+def load_reference_sample(store: ObjectStore, version: str, root: str = "") -> pd.DataFrame:
+    """The bundle's drift reference (train sample: features, `is_late`, `p_late`), verified.
+
+    Reads only the manifest and this one file (the monitor already holds the model).
+
+    Raises:
+        ArtifactIntegrityError: missing/invalid manifest, missing file or checksum mismatch,
+            or bytes that are not parquet.
+    """
+    data = _verified_file(store, _read_manifest(store, version, root), REFERENCE_FILE, root)
+    try:
+        return pd.read_parquet(io.BytesIO(data))
+    except (OSError, ValueError):
+        raise ArtifactIntegrityError(f"models/{version}: {REFERENCE_FILE} unreadable") from None
 
 
 @dataclass(frozen=True)

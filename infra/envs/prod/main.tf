@@ -71,6 +71,11 @@ data "aws_iam_policy_document" "api" {
     resources = ["${local.data_arn}/live/boards/*"]
   }
   statement {
+    sid       = "ReadMonitoring" # Phase 9: GET /api/v1/monitoring
+    actions   = ["s3:GetObject"]
+    resources = ["${local.data_arn}/monitoring/*"]
+  }
+  statement {
     sid       = "ReadModels"
     actions   = ["s3:GetObject"]
     resources = ["${module.data_lake.models_bucket_arn}/models/*"]
@@ -155,12 +160,75 @@ module "http_api" {
   lambda_function_name = module.api.function_name
 }
 
+# --- Phase 9: daily monitor (API image: scoring path + scipy, no extra dependency) ---------
+
+data "aws_iam_policy_document" "monitor" {
+  statement {
+    sid       = "ReadModels"
+    actions   = ["s3:GetObject"]
+    resources = ["${module.data_lake.models_bucket_arn}/models/*"]
+  }
+  statement {
+    sid       = "ListModelBundles"
+    actions   = ["s3:ListBucket"]
+    resources = [module.data_lake.models_bucket_arn]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["models/*"]
+    }
+  }
+  statement {
+    sid       = "ReadModelPointer"
+    actions   = ["ssm:GetParameter", "ssm:GetParameters"]
+    resources = module.ssm.param_arns
+  }
+  statement {
+    sid     = "ReadLiveSilverAndState"
+    actions = ["s3:GetObject"]
+    resources = [
+      "${local.data_arn}/silver/departures/source=live/*",
+      "${local.data_arn}/silver/_quality/source=live/*",
+      "${local.data_arn}/monitoring/*",
+      "${local.data_arn}/control/*",
+    ]
+  }
+  statement {
+    sid     = "WriteResultsAndFlag"
+    actions = ["s3:PutObject"]
+    resources = [
+      "${local.data_arn}/monitoring/*",
+      "${local.data_arn}/control/retrain_requested.json",
+    ]
+  }
+}
+
+module "monitor" {
+  source    = "../../modules/lambda_image"
+  name      = "monitor"
+  image_uri = local.image_uri
+  command   = ["monitor_handler.handler"]
+  memory_mb = 512 # account quota: max 512 MB
+  timeout_s = 300
+  # Idempotent per day (results are replaced): one retry is enough.
+  async_retries = 1
+  policy_json   = data.aws_iam_policy_document.monitor.json
+  environment = {
+    APP_ENV             = "prod"
+    LOG_LEVEL           = "INFO"
+    DATA_BUCKET         = module.data_lake.data_bucket
+    MODELS_BUCKET       = module.data_lake.models_bucket
+    MODEL_POINTER_PARAM = module.ssm.champion_param
+  }
+}
+
 module "schedules" {
   source                    = "../../modules/schedules"
   board_mode                = var.board_mode
   sample_board_function_arn = module.sample_board.function_arn
   ingest_function_arn       = module.ingest.function_arn
   etl_function_arn          = module.etl_daily.function_arn
+  monitor_function_arn      = module.monitor.function_arn
 }
 
 module "web_cdn" {

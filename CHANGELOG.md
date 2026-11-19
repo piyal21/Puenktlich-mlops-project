@@ -3,6 +3,73 @@
 One entry per phase branch (owner rule, from Phase 2 on). Phases 0–1 are described in [`Phases/`](Phases/).
 Only measured numbers; anything not measured is `TBD`.
 
+## Phase 9 — Monitoring & continuous training (`phase-9/monitoring`)
+
+**Built**
+- `dbdelay.monitoring`: daily performance (Brier, ROC-AUC, log loss, ECE, actual vs predicted late rate; numpy/scipy,
+  same definitions as training), drift (Evidently's default tests computed with scipy: Wasserstein normed /
+  Jensen–Shannon, threshold 0.1; reference = champion's reference sample, same day type), history, 3-day retrain
+  trigger with forced-demo overrides, flag states `requested → picked_up → done`, decision records.
+- `puenktlich-monitor` Lambda on the **API image** (handler `monitor_handler.handler`), daily 04:30 Berlin; results in
+  the data lake (`monitoring/daily/`, `history.json`, `retrains.json`), served by **`GET /api/v1/monitoring`**.
+- 5 EMF metrics and 3 alarms (monitor missing, drift, performance) → 9 alarms, 7 custom metrics (free tier 10/10).
+- Retrain loop (route A): `make retrain-sync` (S3 live silver + flag → MinIO) → Airflow `drift_watch` →
+  `training_pipeline` (+ `record_decision`) → `make retrain-publish` (decisions → S3; gate-approved release → prod).
+- Training reads HF **and** live silver (live wins per day, each source's own gap flags); `make hf-raw-fill` rebuilds
+  days from HF raw until HF publishes the month; HF 2026-09/10 backfilled.
+- Model Health page: status, daily charts (SVG, dataviz-validated colours, table alternative per chart), drift table,
+  retrain log. `docs/runbook.md` for all alarms; ADR 0003.
+
+**Key decisions**
+- Evidently rejected for the Lambda (measured: +177 MB RSS, +7.7 s import) → same tests via scipy, already in the
+  API image (ADR 0003, rules.md §2). Monitor on the API image (needs LightGBM; no new dependency).
+- DriftShare counts the 7 content inputs only; calendar inputs always differ on one day.
+- Results via the API, not public files (`make web-deploy` replaces the web bucket).
+- Triggers armed from the first run; a new request needs a fresh, non-overlapping streak.
+- Gate unchanged. A gate-approved retrain is published by `make retrain-publish` (the gate decides, not a person).
+- No Recharts: one small SVG chart component (no new npm dependency).
+
+**Tested**
+- `make check`: 676 passed, coverage 96.15 %. `make web-check`: 86 passed; npm audit (runtime, high) 0.
+  `make test-dags` passed. `make tf-scan` exit 0, tflint 0 issues, `terraform validate` OK.
+- AWS: `tf-apply` 9 added, 4 changed, 0 destroyed. Monitor backfill 13–17 Nov: 7.1–10.7 s, 361–464 MB of 512 MB.
+  `make smoke-prod-live` 11/11 (new `monitoring_served`). Health page in headless Chrome: real data, 0 CSP errors.
+- Real monitoring (live days 14–17 Nov): Brier ratio 1.05 / 0.97 / 1.24 / 1.31; actual late rate 0.22–0.33 vs
+  predicted 0.19–0.23; DriftShare 0.43–0.57 (destination_key 0.31–0.33, line_key 0.22–0.23 vs same-sample noise
+  0.10 / 0.08). 13 Nov: every station-day flagged → `too_few_rows`.
+- **Real loop end to end:** AWS monitor raised drift flag `20261119T010455Z-drift` (14–16 Nov) → sync → `drift_watch`
+  → `training_pipeline` (snapshot `2026-11-17_aa477d29`: train 3,140,898 / valid 173,267 / test 150,530 rows;
+  HF 3,415,394 + live 49,301) → gate **rejected** challenger v6: test Brier 0.1477 vs champion 0.1555, AUC 0.800 vs
+  0.781, ECE 0.013 vs 0.040, but `slice_auc` failed (train type NBE −0.0525 > 0.02). Champion stays v1.
+- **Owner follow-up (2026-11-19): gate relaxed + v7 live.** The per-train-type AUC check now judges only types with
+  ≥ 2,000 test rows (`gate.min_slice_rows: 2000`; limit 0.02 unchanged): NBE had 797 rows and AUC ≈ 0.44–0.50 for
+  both models. Re-run on the window ending 2026-11-18 (snapshot `2026-11-18_c0373622`): challenger **v7 passed**
+  every check — test Brier 0.1500 vs champion v1 0.1586 vs baseline 0.1652, ROC-AUC 0.7996 vs 0.7805, ECE 0.0158
+  vs 0.0469 (150,437 test rows, late rate 26.7 %). The gate task's Airflow token expired while the PC slept (403
+  after the branch decision); release → smoke test → decision record were finished with the same pipeline functions
+  in the Airflow container. `make retrain-publish`: prod SSM pointer 1 → **7**, both decisions on the health page.
+- Real scheduled run 2026-11-19 03:30 UTC failed: EventBridge Scheduler sends its event envelope when a target has
+  no input → handler treats it as `{}`, schedule sends `{}` (test-first, deployed; 18 Nov monitored: 12,951 rows).
+- Final review (opus): 0 Critical, 2 Important fixed test-first (re-flag on overlapping streaks; gap flags per
+  source), 1 Minor re-graded to Important and fixed (status wording); 6 minors deferred (below).
+
+**Known gaps / open items**
+- Owner relaxed the per-train-type gate (types with < 2,000 test rows are listed, not judged); v7 is the champion.
+- Airflow tasks still die when the PC sleeps (task token); keep the laptop awake during retrains.
+- Monitor memory 464 of 512 MB (watch, like the ETL's 402 MB).
+- Deferred minors: sync writes the local flag before marking AWS `picked_up`; `scheduled-<date>` decision ids can
+  collide; a top-level JSON `null` in history → 500 instead of 503; monitor IAM `PutObject` could be narrowed to
+  `monitoring/daily/*` + `history.json`; charts place points by index and plot `too_few_rows` days; a corrupt fill
+  report shows a traceback.
+- Local MLflow: SQLAlchemy 2.1 (Phase 8 upgrade) needed `postgresql+psycopg2://` — fixed here.
+- From Phase 7: the 4 state versions holding DB API keys were deleted (owner request; 16 remaining versions checked:
+  none holds the keys). Rotating the keys is still the owner's. 6 Dependabot PRs merged; #22–#25 are new.
+
+**Docs touched**
+- `docs/rules.md` §2, `docs/adr/0003-drift-without-evidently.md`, `docs/architecture.md` §3.2/§4/§5/§7/§9/§15,
+  `docs/prd.md` §6.3, `docs/runbook.md` (new), `docs/phases.md`, README, CLAUDE.md, spec + plan,
+  `Phases/phase-9-monitoring.md`, `Phases/README.md`.
+
 ## Phase 8 — CI/CD, route A (`phase-8/ci-cd`)
 
 **Built**

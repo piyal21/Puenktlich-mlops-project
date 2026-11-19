@@ -34,3 +34,7 @@ class ModelNotAvailableError(DbDelayError):
 
 class NotFoundError(DbDelayError):
     """Unknown station, event or storage object."""
+
+
+class MonitoringUnavailableError(DbDelayError):
+    """Stored monitoring results are unreadable or unreachable (Phase 9)."""

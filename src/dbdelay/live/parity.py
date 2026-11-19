@@ -17,11 +17,11 @@ from botocore.exceptions import BotoCoreError
 from dbdelay.aws_session import refusal_line
 from dbdelay.config import get_settings
 from dbdelay.data.hf_backfill import hf_download
+from dbdelay.data.live_report import live_silver_key
 from dbdelay.data.silver import silver_key
 from dbdelay.data.stations import Station, alias_map, load_stations
 from dbdelay.errors import DataValidationError, DbDelayError
 from dbdelay.live.conform import StopMerger, to_silver
-from dbdelay.live.etl import live_silver_key
 from dbdelay.live.hf_raw import hf_raw_paths, iter_hf_raw
 from dbdelay.live.reconcile import THRESHOLD, compare_silver, verdict
 from dbdelay.storage import ObjectStore, make_aws_s3_client, make_s3_client

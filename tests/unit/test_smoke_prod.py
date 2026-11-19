@@ -33,6 +33,7 @@ def good_site() -> dict[tuple[str, str], Any]:
         ("GET", "/api/v1/stations/8010101/departures?hours=3"): _json(200, board),
         ("POST", "/api/v1/predict"): _json(200, {"p_late": 0.3, "risk_level": "medium"}),
         ("GET", "/api/v1/model"): _json(200, {"version": "1"}),
+        ("GET", "/api/v1/monitoring"): _json(200, {"latest": None, "history": [], "retrains": []}),
         ("GET", "/api/docs"): smoke.Response(200, {"content-type": "text/html"}, b"<html>"),
         ("GET", "/api/v1/stations/1234567/departures?hours=3"): _json(
             404, {"type": "/errors/station-not-supported"}, "application/problem+json"
@@ -89,6 +90,16 @@ def test_all_checks_pass_on_a_good_site() -> None:
             ("GET", "/"),
             smoke.Response(200, {"content-type": "text/html", "cache-control": "no-cache"}, SPA),
             "security_headers",
+        ),
+        (
+            ("GET", "/api/v1/monitoring"),
+            _json(503, {"type": "/errors/monitoring-unavailable"}, "application/problem+json"),
+            "monitoring_served",
+        ),
+        (
+            ("GET", "/api/v1/monitoring"),
+            smoke.Response(200, {"content-type": "text/html"}, SPA),
+            "monitoring_served",
         ),
         (
             ("GET", "/"),

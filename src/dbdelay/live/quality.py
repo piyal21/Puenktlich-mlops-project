@@ -1,7 +1,7 @@
 """Daily quality report for live silver, with the gap fields training already reads.
 
 `low_volume_hours` (Berlin "%Y-%m-%dT%H") and `stations[].volume_drop_days` (UTC days) have the
-same meaning for `training.split.gap_masks` as in the HF monthly reports. Live rule (Phase 7):
+same meaning for `data.gaps.gap_masks` as in the HF monthly reports. Live rule (Phase 7):
 a departure is *covered* when its station had a successful `fchg` call within 3 h after the planned
 time; otherwise "no change reported ⇒ on time" may be wrong (risk #1).
 - station-day flagged: any uncovered departure, or any Berlin hour of the day without a plan;
@@ -12,40 +12,17 @@ from bisect import bisect_left
 from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
 from itertools import pairwise
-from typing import Literal
 
 import pandas as pd
-from pydantic import BaseModel
 
+from dbdelay.data.live_report import LiveQualityReport
 from dbdelay.data.quality import StationQuality, content_hash
-from dbdelay.data.schemas import SILVER_SCHEMA_VERSION
 from dbdelay.data.stations import Station
 from dbdelay.live.conform import MergedStop
 from dbdelay.live.plans import hour_key
 from dbdelay.timetables.parser import BERLIN
 
 COVER_WINDOW = timedelta(hours=3)
-RUNS_PER_DAY = 96
-
-
-class LiveQualityReport(BaseModel):
-    schema_version: int = SILVER_SCHEMA_VERSION
-    source: Literal["live"] = "live"
-    day: date
-    rows_out: int
-    drops: dict[str, int]
-    late_rate: float | None
-    cancelled_rate: float | None
-    stations: list[StationQuality]
-    low_volume_hours: list[str]
-    fchg_runs_expected: int = RUNS_PER_DAY
-    fchg_runs_ok: dict[str, int]
-    longest_fchg_gap_min: dict[str, int]
-    plan_hours_missing: dict[str, list[str]]
-    never_seen_in_fchg: int
-    fchg_only_stops: int
-    empty_stations: list[str]
-    content_hash: str
 
 
 def day_bounds(day: date) -> tuple[datetime, datetime]:

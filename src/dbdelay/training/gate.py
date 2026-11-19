@@ -58,13 +58,21 @@ def _auc_vs_champion(challenger: SplitReport, champion: SplitReport, cfg: GateCo
 
 
 def _slice_auc(challenger: SplitReport, reference: SplitReport, cfg: GateConfig) -> Check:
-    """Per-`train_type` AUC drop vs the reference; slices without AUC on either side are skipped."""
+    """Per-`train_type` AUC drop vs the reference.
+
+    Slices without AUC on either side are skipped; slices with fewer than `min_slice_rows`
+    challenger test rows are listed as too small (their AUC is mostly noise).
+    """
     ours = challenger.slices.get(SLICE_COLUMN, {})
     theirs = reference.slices.get(SLICE_COLUMN, {})
     failed: list[str] = []
     skipped: list[str] = []
+    small: list[str] = []
     worst: float | None = None
     for key in sorted(ours):
+        if ours[key].n < cfg.min_slice_rows:
+            small.append(key)
+            continue
         mine = ours[key].roc_auc
         other = theirs[key].roc_auc if key in theirs else None
         if mine is None or other is None:
@@ -79,6 +87,8 @@ def _slice_auc(challenger: SplitReport, reference: SplitReport, cfg: GateConfig)
         parts.append(f"failed: {', '.join(failed)}")
     if skipped:
         parts.append(f"skipped: {', '.join(skipped)}")
+    if small:
+        parts.append(f"too small: {', '.join(small)}")
     return Check(
         name="slice_auc",
         passed=not failed,

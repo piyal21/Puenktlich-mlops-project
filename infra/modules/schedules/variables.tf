@@ -32,3 +32,13 @@ variable "etl_cron" {
   type        = string
   default     = "cron(30 3 * * ? *)"
 }
+
+variable "monitor_function_arn" {
+  type = string
+}
+
+variable "monitor_cron" {
+  description = "Daily monitor (Europe/Berlin), one hour after the nightly ETL."
+  type        = string
+  default     = "cron(30 4 * * ? *)"
+}

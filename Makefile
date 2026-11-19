@@ -22,14 +22,14 @@ IMAGE_TAG ?= $(shell git rev-parse --short=12 HEAD)
 ECR_REPO = $(call tf_out,ecr_repository_url)
 ECR_REGISTRY = $(firstword $(subst /, ,$(ECR_REPO)))
 ECR_JOBS_REPO = $(call tf_out,ecr_jobs_repository_url)
-AWS_TARGETS := publish-model rollback-prod upload-sample-days put-db-api-secrets reconcile jobs-image-push tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply image-push web-deploy smoke-prod smoke-prod-live
+AWS_TARGETS := publish-model rollback-prod upload-sample-days put-db-api-secrets reconcile retrain-sync retrain-publish jobs-image-push tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply image-push web-deploy smoke-prod smoke-prod-live
 $(AWS_TARGETS) aws-check: export AWS_PROFILE := $(AWS_PROFILE)
 $(AWS_TARGETS) aws-check: export AWS_REGION := $(AWS_REGION)
 # Git Bash would rewrite "/*" and docker -v paths into Windows paths.
 $(AWS_TARGETS) tf-scan image-scan: export MSYS_NO_PATHCONV := 1
 # boto3 cannot read `aws login` sessions without botocore[crt]; the Python CLIs use a profile
 # whose credential_process asks the AWS CLI for them instead (no extra dependency).
-PY_AWS_TARGETS := publish-model rollback-prod upload-sample-days put-db-api-secrets reconcile
+PY_AWS_TARGETS := publish-model rollback-prod upload-sample-days put-db-api-secrets reconcile retrain-sync retrain-publish
 AWS_PY_PROFILE := $(AWS_PROFILE)-py
 $(PY_AWS_TARGETS): export AWS_PROFILE := $(AWS_PY_PROFILE)
 $(PY_AWS_TARGETS): aws-py-profile
@@ -42,7 +42,7 @@ DOCKER_ECR_CONFIG := $(subst \,/,$(or $(HOME),$(USERPROFILE)))/.docker-puenktlic
 # Fail fast with one clear line when the 12 h `aws login` session is gone.
 $(AWS_TARGETS): aws-check
 
-.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed parity-check reconcile ingest-local etl-live-local jobs-requirements jobs-image-build jobs-image-push put-db-api-secrets app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan image-scan tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply aws-check aws-py-profile image-push web-deploy smoke-prod smoke-prod-live
+.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed parity-check reconcile ingest-local etl-live-local monitor-local hf-raw-fill retrain-sync retrain-publish jobs-requirements jobs-image-build jobs-image-push put-db-api-secrets app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan image-scan tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply aws-check aws-py-profile image-push web-deploy smoke-prod smoke-prod-live
 
 help: ## Show available targets
 	@uv run python -c "import re; [print(f'{m[0]:<18} {m[1]}') for m in re.findall(r'^([a-z-]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -131,11 +131,23 @@ parity-check: ## HF raw XML through the live code vs HF silver in MinIO for DAY 
 reconcile: ## Live silver (AWS, read) vs HF raw for DAYS="YYYY-MM-DD ..."; writes reports (local + S3)
 	uv run python scripts/reconcile_live.py --days $(DAYS) --data-bucket $(call tf_out,data_bucket) --region $(AWS_REGION)
 
+retrain-sync: ## Copy live silver days + a waiting retrain flag from AWS into local MinIO (Phase 9; AWS read + flag state write)
+	uv run python -m dbdelay.monitoring.sync sync --data-bucket $(call tf_out,data_bucket) --models-bucket $(call tf_out,models_bucket) --region $(AWS_REGION)
+
+retrain-publish: ## Publish local retrain decisions to S3; a gate-approved release also updates the prod champion (Phase 9)
+	uv run python -m dbdelay.monitoring.sync publish --data-bucket $(call tf_out,data_bucket) --models-bucket $(call tf_out,models_bucket) --region $(AWS_REGION)
+
 ingest-local: ## One live ingest run: real DB API (keys from .env) -> local MinIO bronze, plan cache, board (Phase 7)
 	uv run python scripts/live_jobs.py ingest
 
 etl-live-local: ## Live bronze -> silver + quality report in local MinIO for DAY (UTC; Phase 7)
 	uv run python scripts/live_jobs.py etl --day $(DAY)
+
+monitor-local: ## Run the daily monitor for DAY (UTC) against local MinIO (Phase 9); FORCE_DRIFT=0 forces a flag
+	uv run python -m dbdelay.monitoring.cli --day $(DAY) $(if $(FORCE_DRIFT),--drift-share-max $(FORCE_DRIFT),)
+
+hf-raw-fill: ## Silver days FROM..TO (one month) from HF raw into local MinIO until HF publishes the month (Phase 9)
+	uv run python -m dbdelay.live.hf_raw_fill --from $(FROM) --to $(TO)
 
 jobs-requirements: ## Regenerate the jobs image's hash-pinned requirements from uv.lock
 	uv export --frozen --no-dev --extra jobs --no-emit-project --format requirements-txt -o services/jobs/requirements.txt

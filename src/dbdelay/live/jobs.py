@@ -7,10 +7,10 @@ from datetime import UTC, date, datetime, timedelta
 import boto3
 
 from dbdelay.config import Settings
+from dbdelay.data.live_report import LiveQualityReport
 from dbdelay.data.stations import load_stations
 from dbdelay.live.etl import run_etl
 from dbdelay.live.ingest import IngestResult, TimetablesApi, run_ingest
-from dbdelay.live.quality import LiveQualityReport
 from dbdelay.live.secrets import load_db_api_credentials
 from dbdelay.storage import BOTO_CONFIG, ObjectStore, make_s3_client
 from dbdelay.timetables.client import TimetablesClient

@@ -192,9 +192,9 @@ flowchart LR
   A["etl_daily<br/>yesterday's real outcomes"] --> B["monitor"]
   M["champion model<br/>+ reference data"] --> B
   B --> P["Performance<br/>Brier · AUC · calibration"]
-  B --> D["Data drift<br/>Evidently · weekday-matched reference"]
+  B --> D["Data drift<br/>Evidently-default tests (scipy) · weekday-matched reference"]
   B --> R["Prediction drift"]
-  P & D & R --> PUB["Public Health page<br/>+ HTML drift report"]
+  P & D & R --> PUB["Public Health page<br/>charts + drift table"]
   P & D --> CW["CloudWatch metrics<br/>→ alarms → email"]
   P & D --> T{"Drift or worse accuracy<br/>3 days in a row?"}
   T -- yes --> FLAG["retrain_requested.json"]
@@ -302,8 +302,8 @@ See the full [model card](docs/model_card.md).
 | Artifact integrity | SHA-256 manifest, verified on load | `src/dbdelay/registry/artifacts.py` |
 | Serving | FastAPI on Lambda, container images | `services/api/` |
 | Release & rollback | SSM pointer, `make rollback` | `src/dbdelay/registry/pointer.py` |
-| Data / prediction / model drift | Evidently + daily performance on real outcomes | `src/dbdelay/monitoring/` |
-| Continuous training | Retrain flag → Airflow sensor → pipeline | `pipelines/airflow/dags/drift_watch.py` |
+| Data / prediction / model drift | Evidently's default tests (scipy, ADR 0003) + daily performance on real outcomes | `src/dbdelay/monitoring/` |
+| Continuous training | Retrain flag → `make retrain-sync` → Airflow `drift_watch` → gated pipeline → `make retrain-publish` | `pipelines/airflow/dags/drift_watch.py`, `src/dbdelay/monitoring/sync.py` |
 | Alerting | CloudWatch alarms → SNS email | `infra/modules/observability/` |
 | CI/CD | GitHub Actions, OIDC, scans, smoke tests | `.github/workflows/` |
 | Infrastructure as Code | Terraform modules, remote state with locking | `infra/` |
@@ -320,9 +320,9 @@ See the full [model card](docs/model_card.md).
 | Language | Python 3.12, TypeScript |
 | Data | DuckDB, pandas, PyArrow, Pandera |
 | ML | LightGBM, scikit-learn |
-| MLOps | Apache Airflow 3, MLflow 3, Evidently |
+| MLOps | Apache Airflow 3, MLflow 3, scipy drift tests (Evidently defaults) |
 | Serving | FastAPI, Mangum, AWS Lambda, API Gateway |
-| Frontend | React, Vite, Tailwind CSS, TanStack Query, Recharts |
+| Frontend | React, Vite, Tailwind CSS, TanStack Query, hand-drawn SVG charts |
 | Cloud | AWS: Lambda, S3, CloudFront, EventBridge Scheduler, SSM, CloudWatch, SNS, ECR, Budgets |
 | IaC & CI/CD | Terraform, GitHub Actions (OIDC) |
 | Quality & security | pytest, moto, Vitest, Ruff, mypy, Trivy, gitleaks, pip-audit, Dependabot |

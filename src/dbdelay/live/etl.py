@@ -10,26 +10,19 @@ from collections import Counter, defaultdict
 from collections.abc import Iterator, Sequence
 from datetime import date, datetime, timedelta
 
+from dbdelay.data.live_report import LiveQualityReport, live_quality_key, live_silver_key
 from dbdelay.data.silver import SILVER_ARROW_SCHEMA, to_parquet_bytes
 from dbdelay.data.stations import Station
 from dbdelay.errors import DataValidationError
 from dbdelay.live.conform import StopMerger, to_silver
 from dbdelay.live.plans import hour_key
-from dbdelay.live.quality import LiveQualityReport, build_live_report
+from dbdelay.live.quality import build_live_report
 from dbdelay.storage import ObjectStore
 from dbdelay.timetables.bronze import BronzeRecord, Kind, bronze_prefix, iter_records
 from dbdelay.timetables.parser import ParseResult, parse_timetable
 
 HTTP_OK = 200
 HTTP_NOT_FOUND = 404
-
-
-def live_silver_key(day: date) -> str:
-    return f"silver/departures/source=live/date={day:%Y-%m-%d}/part-0.parquet"
-
-
-def live_quality_key(day: date) -> str:
-    return f"silver/_quality/source=live/date={day:%Y-%m-%d}.json"
 
 
 def _records(store: ObjectStore, kind: Kind, days: Sequence[date]) -> Iterator[BronzeRecord]:

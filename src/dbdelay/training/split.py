@@ -6,7 +6,7 @@ from calendar import monthrange
 from collections.abc import Sequence
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal
 
 import duckdb
 import numpy as np
@@ -14,7 +14,9 @@ import pandas as pd
 import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict
 
-from dbdelay.data.quality import QualityReport, StationQuality
+from dbdelay.data.gaps import GapReport, gap_masks
+from dbdelay.data.live_report import LiveQualityReport, live_quality_key, live_silver_key
+from dbdelay.data.quality import QualityReport
 from dbdelay.data.silver import (
     SILVER_ARROW_SCHEMA,
     SILVER_COLUMNS,
@@ -23,24 +25,15 @@ from dbdelay.data.silver import (
     to_parquet_bytes,
 )
 from dbdelay.errors import DataValidationError, NotFoundError
-from dbdelay.features.calendar import BERLIN
 from dbdelay.storage import ObjectStore
 from dbdelay.training.config import TrainingConfig
 
 SPLITS: tuple[str, ...] = ("train", "valid", "test")
 SILVER_PREFIX = "silver/departures/source=hf/"
+LIVE_SILVER_PREFIX = "silver/departures/source=live/"
+Source = Literal["hf", "live"]
 SNAPSHOT_FILE = "snapshot.json"
 _SPLIT_CONFIG_KEYS = ("window_months", "end_date", "test_days", "valid_days", "exclude_data_gaps")
-
-
-class GapReport(Protocol):
-    """What `gap_masks` reads: HF monthly and live daily quality reports both provide it."""
-
-    @property
-    def low_volume_hours(self) -> Sequence[str]: ...
-
-    @property
-    def stations(self) -> Sequence[StationQuality]: ...
 
 
 class Windows(BaseModel):
@@ -89,39 +82,6 @@ def compute_windows(end: date, cfg: TrainingConfig) -> Windows:
     return Windows(start=start, valid_start=valid_start, test_start=test_start, end=end)
 
 
-def gap_masks(
-    df: pd.DataFrame, reports: Sequence[GapReport]
-) -> tuple["pd.Series[bool]", "pd.Series[bool]"]:
-    """Rows in a flagged low-volume local hour, and rows on a station's flagged UTC day."""
-    planned = df["planned_departure_utc"]
-    gap_hours = pd.DatetimeIndex(
-        [
-            pd.Timestamp(f"{hour}:00").tz_localize(BERLIN)
-            for report in reports
-            for hour in report.low_volume_hours
-        ],
-        tz=BERLIN,
-    )
-    # Berlin offsets are whole hours, so flooring in UTC equals flooring in local time.
-    local_hour = planned.dt.floor("h").dt.tz_convert(BERLIN)
-    in_hour = local_hour.isin(gap_hours).to_numpy()
-
-    drop_days: dict[str, set[str]] = {}
-    for report in reports:
-        for station in report.stations:
-            drop_days.setdefault(station.eva, set()).update(station.volume_drop_days)
-    utc_day = planned.dt.floor("D")
-    evas = df["eva"].astype(str).to_numpy()
-    in_day = np.zeros(len(df), dtype=bool)
-    for eva, days in sorted(drop_days.items()):
-        flagged = pd.DatetimeIndex(sorted(days)).tz_localize("UTC")
-        in_day |= (evas == eva) & utc_day.isin(flagged).to_numpy()
-    return (
-        pd.Series(in_hour, index=df.index, dtype="bool"),
-        pd.Series(in_day, index=df.index, dtype="bool"),
-    )
-
-
 def assign_split(planned_utc: pd.Series, windows: Windows) -> pd.Series:
     """``train`` / ``valid`` / ``test`` by the UTC date of the planned departure."""
     day = planned_utc.dt.floor("D")
@@ -150,14 +110,47 @@ class SnapshotManifest(BaseModel):
     silver_days: int
     quality_months: list[str]
     config: dict[str, Any]
+    # Phase 9: labelled rows kept per silver source (live wins on days both have).
+    rows_by_source: dict[str, int] = {}
 
 
 def snapshot_prefix(snapshot_id: str, root: str = "") -> str:
     return f"{root}gold/training_sets/{snapshot_id}/"
 
 
+def _days_under(store: ObjectStore, prefix: str) -> set[date]:
+    return {
+        date.fromisoformat(key.split("date=", 1)[1][:10])
+        for key in store.iter_keys(prefix)
+        if "date=" in key
+    }
+
+
+def _silver_key(day: date, source: Source, root: str) -> str:
+    return root + live_silver_key(day) if source == "live" else silver_key(day, root)
+
+
+def day_sources(store: ObjectStore, days: Sequence[date], root: str = "") -> dict[date, Source]:
+    """Where each day's silver comes from: live when its file exists, else HF (spec §4.5).
+
+    Raises:
+        DataValidationError: if a day has neither.
+    """
+    live = _days_under(store, root + LIVE_SILVER_PREFIX)
+    hf = _days_under(store, root + SILVER_PREFIX)
+    sources: dict[date, Source] = {}
+    for day in days:
+        if day in live:
+            sources[day] = "live"
+        elif day in hf:
+            sources[day] = "hf"
+        else:
+            raise DataValidationError(f"silver day {day} is missing")
+    return sources
+
+
 def latest_silver_day(store: ObjectStore, root: str = "") -> date:
-    """Newest UTC day whose silver partition has rows.
+    """Newest UTC day whose silver partition (HF or live) has rows.
 
     Built months contain an (empty) partition for every day, so the newest key alone
     would point past the data of a partially collected month.
@@ -165,16 +158,11 @@ def latest_silver_day(store: ObjectStore, root: str = "") -> date:
     Raises:
         DataValidationError: if there is no silver row at all.
     """
-    days = sorted(
-        {
-            date.fromisoformat(key.split("date=", 1)[1][:10])
-            for key in store.iter_keys(root + SILVER_PREFIX)
-            if "date=" in key
-        },
-        reverse=True,
-    )
+    live = _days_under(store, root + LIVE_SILVER_PREFIX)
+    days = sorted(live | _days_under(store, root + SILVER_PREFIX), reverse=True)
     for day in days:
-        footer = pq.read_metadata(io.BytesIO(store.get_bytes(silver_key(day, root))))
+        source: Source = "live" if day in live else "hf"
+        footer = pq.read_metadata(io.BytesIO(store.get_bytes(_silver_key(day, source, root))))
         if footer.num_rows > 0:
             return day
     raise DataValidationError("no silver rows found")
@@ -191,15 +179,28 @@ def _load_reports(store: ObjectStore, months: Sequence[str], root: str) -> list[
     return reports
 
 
-def _read_labelled_silver(
-    store: ObjectStore, days: Sequence[date], workdir: Path, root: str
-) -> tuple[pd.DataFrame, int]:
-    """Labelled rows of ``days`` (sorted by event_id) and the number of cancelled rows."""
-    files = []
+def _load_live_reports(
+    store: ObjectStore, days: Sequence[date], root: str
+) -> list[LiveQualityReport]:
+    reports = []
     for day in days:
+        try:
+            raw = store.get_bytes(root + live_quality_key(day))
+        except NotFoundError:
+            raise DataValidationError(f"live quality report for {day} is missing") from None
+        reports.append(LiveQualityReport.model_validate_json(raw))
+    return reports
+
+
+def _read_labelled_silver(
+    store: ObjectStore, sources: dict[date, Source], workdir: Path, root: str
+) -> tuple[pd.DataFrame, int]:
+    """Labelled rows of the days (sorted by event_id) and the number of cancelled rows."""
+    files = []
+    for day, source in sorted(sources.items()):
         path = workdir / f"silver-{day:%Y-%m-%d}.parquet"
         try:
-            store.download_file(silver_key(day, root), path)
+            store.download_file(_silver_key(day, source, root), path)
         except NotFoundError:
             raise DataValidationError(f"silver day {day} is missing") from None
         files.append(str(path))
@@ -231,12 +232,27 @@ def build_snapshot(
     workdir.mkdir(parents=True, exist_ok=True)
     end = cfg.end_date or latest_silver_day(store, root)
     windows = compute_windows(end, cfg)
-    rows, cancelled = _read_labelled_silver(store, windows.days(), workdir, root)
+    sources = day_sources(store, windows.days(), root)
+    rows, cancelled = _read_labelled_silver(store, sources, workdir, root)
     excluded = {"cancelled": cancelled, "gap_hours": 0, "gap_station_days": 0}
     quality_months: list[str] = []
     if cfg.exclude_data_gaps:
-        quality_months = windows.months()
-        in_hour, in_day = gap_masks(rows, _load_reports(store, quality_months, root))
+        quality_months = sorted({f"{d:%Y-%m}" for d, src in sources.items() if src == "hf"})
+        live_days = sorted(d for d, src in sources.items() if src == "live")
+        # Each source's gap flags apply only to that source's rows (spec §4.5): a later HF
+        # monthly report must not drop live rows on days live serves.
+        by_source: dict[str, list[GapReport]] = {
+            "hf": [*_load_reports(store, quality_months, root)],
+            "live": [*_load_live_reports(store, live_days, root)],
+        }
+        in_hour = pd.Series(False, index=rows.index, dtype="bool")
+        in_day = pd.Series(False, index=rows.index, dtype="bool")
+        for source, reports in by_source.items():
+            part = (rows["source"] == source).to_numpy()
+            if part.any():
+                hour_part, day_part = gap_masks(rows.loc[part], reports)
+                in_hour.loc[part] = hour_part.to_numpy()
+                in_day.loc[part] = day_part.to_numpy()
         excluded["gap_hours"] = int(in_hour.sum())
         excluded["gap_station_days"] = int((in_day & ~in_hour).sum())
         rows = rows[~(in_hour | in_day)].reset_index(drop=True)
@@ -266,6 +282,7 @@ def build_snapshot(
         excluded=excluded,
         silver_days=len(windows.days()),
         quality_months=quality_months,
+        rows_by_source={str(k): int(v) for k, v in rows["source"].value_counts().items()},
         config={
             key: value
             for key, value in cfg.model_dump(mode="json").items()

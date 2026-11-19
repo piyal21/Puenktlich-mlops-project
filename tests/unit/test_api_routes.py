@@ -1,13 +1,15 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
+from dbdelay.monitoring.job import HISTORY_KEY
 from dbdelay.registry.artifacts import models_prefix
 from dbdelay.serving.board import LiveBoard
 from dbdelay.storage import ObjectStore
 from tests.api_support import client, make_deps
 from tests.boards import FRANKFURT, MUENCHEN, NOW, departure, live_board
 from tests.unit.test_api_basics import assert_problem
+from tests.unit.test_serving_monitoring import put_monitoring
 
 URL = f"/api/v1/stations/{FRANKFURT}/departures"
 BODY = {
@@ -202,3 +204,26 @@ def test_model_info(s3_store: ObjectStore, bundle_files: dict[str, bytes]) -> No
 def test_model_info_without_model_is_503(s3_store: ObjectStore) -> None:
     response = client(make_deps(s3_store)).get("/api/v1/model")
     assert_problem(response, 503, "/errors/model-unavailable")
+
+
+def test_monitoring_empty_before_first_run(s3_store: ObjectStore) -> None:
+    response = client(make_deps(s3_store)).get("/api/v1/monitoring")
+    assert response.status_code == 200
+    assert response.json() == {"latest": None, "history": [], "retrains": []}
+    assert response.headers["cache-control"] == "public, max-age=300"
+
+
+def test_monitoring_full(s3_store: ObjectStore) -> None:
+    put_monitoring(s3_store, [date(2026, 11, 15), date(2026, 11, 16)])
+    body = client(make_deps(s3_store)).get("/api/v1/monitoring").json()
+    assert body["latest"]["day"] == "2026-11-16"
+    assert body["latest"]["excluded_rows"] == {"cancelled": 3}
+    assert [e["day"] for e in body["history"]] == ["2026-11-15", "2026-11-16"]
+    assert body["history"][0]["verdict"]["brier_ratio_max"] == 1.1
+    assert body["retrains"][0]["decision"] == "rejected"
+
+
+def test_monitoring_corrupt_history_is_problem(s3_store: ObjectStore) -> None:
+    s3_store.put_bytes(HISTORY_KEY, b"[1, 2")
+    response = client(make_deps(s3_store)).get("/api/v1/monitoring")
+    assert_problem(response, 503, "/errors/monitoring-unavailable")

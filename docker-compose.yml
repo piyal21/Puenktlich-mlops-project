@@ -103,7 +103,7 @@ services:
       minio-init:
         condition: service_completed_successfully
     environment:
-      MLFLOW_BACKEND_STORE_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/mlflow
+      MLFLOW_BACKEND_STORE_URI: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/mlflow
       MLFLOW_ARTIFACTS_DESTINATION: s3://${DATA_BUCKET:-puenktlich-local}/mlflow
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
       AWS_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID}

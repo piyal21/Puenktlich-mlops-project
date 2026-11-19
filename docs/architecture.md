@@ -88,18 +88,19 @@ flowchart LR
 | `ingest` Lambda (mode `plan`) | Python, `jobs` image | Hourly at :05 | DB `/plan/{eva}/{YYMMDD}/{HH}` for hours H..H+2 | `bronze/…/kind=plan/…`, `live/plans/latest.json.gz` |
 | `ingest` Lambda (mode `changes`) | Python, `jobs` image | Every 15 min | DB `/fchg/{eva}`, `live/plans/latest.json.gz` | `bronze/…/kind=fchg/…`, `live/boards/latest.json.gz` |
 | `etl_daily` Lambda | Python, `jobs` image | Daily 03:30 Europe/Berlin | Bronze of D-1 | `silver/departures/source=live/date=D-1/` |
-| `monitor` Lambda | Python + Evidently, `jobs` image | Daily 04:30 Europe/Berlin | Silver D-1, champion artifacts | `public/health/*`, `public/reports/*`, CloudWatch metrics, `control/retrain_requested.json` |
+| `monitor` Lambda | Python, **`api` image** (scoring path + scipy; handler `monitor_handler.handler`) | Daily 04:30 Europe/Berlin | Live silver + quality report of D-1, champion bundle + reference sample, `monitoring/history.json` | `monitoring/daily/date=D.json`, `monitoring/history.json`, CloudWatch metrics, `control/retrain_requested.json` |
 | `api` Lambda | FastAPI + Mangum, `api` image | HTTP via API Gateway | `live/boards/latest.json.gz`, champion artifacts, SSM pointer | CloudWatch Logs (prediction log) |
 | `sample_board` Lambda (Phase 6, until Phase 7 ingestion) | `api` image, handler `seed_handler.handler` | Every 15 min (EventBridge Scheduler) | `samples/silver/departures/source=hf/…` (9 real days) | `live/boards/latest.json.gz` (`source="sample"`) |
-| Frontend | React SPA | CloudFront | `/api/v1/*`, `/health/*.json` | — |
+| Frontend | React SPA | CloudFront | `/api/v1/*` (health page: `/api/v1/monitoring`) | — |
 | Airflow `backfill_history` | Airflow 3 (local) | Manual | Hugging Face monthly parquet | MinIO bronze/silver |
-| Airflow `training_pipeline` | Airflow 3 (local) | Monthly + triggered | MinIO silver (hf) + S3 silver (live) | MinIO gold, MLflow, S3 models, SSM |
-| Airflow `drift_watch` | Airflow 3 (local) | Sensor on S3 flag | `control/retrain_requested.json` | Triggers `training_pipeline` |
+| Airflow `training_pipeline` | Airflow 3 (local) | Monthly + triggered | MinIO silver (hf + live, synced by `make retrain-sync`) | MinIO gold, MLflow, local models + pointer, `control/decisions/` |
+| Airflow `drift_watch` | Airflow 3 (local) | Every 30 min (short-circuit) | MinIO `control/retrain_requested.json` | Triggers `training_pipeline`, flag state |
+| Laptop `make retrain-sync` / `retrain-publish` | Python CLI (route A) | By hand | S3 live silver + flag / MinIO decisions + champion | MinIO / S3 `monitoring/retrains.json` + prod champion (SSM) |
 | MLflow | MLflow 3 server (local) | — | Postgres, MinIO | — |
 
 **Two container images** keep builds simple:
 - `puenktlich/api` — slim: FastAPI, Mangum, LightGBM, numpy, boto3, shared `dbdelay` package.
-- `puenktlich/jobs` — ingest/etl_daily/monitor share one image; each Lambda sets its own handler via `image_config.command`. Contains DuckDB, pandas, pyarrow, Evidently.
+- `puenktlich/jobs` — ingest/etl_daily share one image; each Lambda sets its own handler via `image_config.command`. Contains DuckDB, pandas, pyarrow, httpx, defusedxml. The Phase 9 `monitor` runs on the `api` image (it needs LightGBM; Evidently was rejected, ADR 0003).
 
 Both are built for `linux/amd64` (Lambda architecture `x86_64`) from `public.ecr.aws/lambda/python:3.12`.
 
@@ -148,10 +149,17 @@ s3://puenktlich-models-<acct>/              (private, SSE-S3, versioning ON)
 
 s3://puenktlich-web-<acct>/                 (private; only CloudFront OAC can read)
 ├── index.html, assets/…                    # frontend build
-└── public/
-    ├── health/latest.json                  # current health snapshot
-    ├── health/history.json                 # last 90 days of daily metrics
-    └── reports/YYYY-MM-DD.html             # Evidently drift report
+```
+
+Phase 9 monitoring lives in the **data** bucket (the web bucket is replaced by every `make web-deploy`),
+served by `GET /api/v1/monitoring`:
+
+```
+s3://puenktlich-data-<acct>/
+├── monitoring/daily/date=YYYY-MM-DD.json   # full daily result (metrics, per-column drift, verdict)
+├── monitoring/history.json                 # one compact entry per day (≤ 366)
+├── monitoring/retrains.json                # retrain decisions (written by make retrain-publish)
+└── control/retrain_requested.json          # retrain flag: requested → picked_up → done
 ```
 
 Local MinIO mirrors the same layout in bucket `puenktlich-local`, plus the history layers written by `backfill_history` (Phase 2):
@@ -241,7 +249,7 @@ Category levels are frozen in `feature_spec.json` at training time; unknown leve
 |---|---|---|
 | `backfill_history` | Manual (params: months) | Download HF monthly parquet → bronze → silver (per month, dynamic task mapping) |
 | `training_pipeline` | `@monthly` + triggered | Build snapshot → baseline → train → calibrate → evaluate → register → gate → release → smoke test |
-| `drift_watch` | Every 30 min (deferrable S3 sensor) | Detect `control/retrain_requested.json` → trigger `training_pipeline` → archive flag |
+| `drift_watch` | Every 30 min (short-circuit task; no triggerer service) | Local MinIO flag in state `requested` (copied by `make retrain-sync`) → mark `picked_up` → trigger `training_pipeline` (conf `request_id`) → mark `done`; a `failed` decision if the pipeline wrote none |
 
 ### 5.2 `training_pipeline` steps
 
@@ -275,6 +283,7 @@ gate:
   max_brier_regression_vs_champion: 0.00    # challenger must be <= champion
   max_auc_drop_vs_champion: 0.005
   max_slice_auc_drop: 0.02                  # per train_type
+  min_slice_rows: 2000                      # Phase 9: smaller train types are listed, not judged
   min_test_rows: 20000
 ```
 If there is no champion yet (first run), only the baseline and slice checks apply.
@@ -383,7 +392,7 @@ Errors → `application/problem+json`:
   "request_id": "c0ffee…" }
 ```
 
-Other endpoints: `GET /api/v1/health`, `GET /api/v1/stations?q=`, `GET /api/v1/model`. OpenAPI at `/api/docs`.
+Other endpoints: `GET /api/v1/health`, `GET /api/v1/stations?q=`, `GET /api/v1/model`, `GET /api/v1/monitoring` (Phase 9: `{latest, history, retrains}`; empty before the first run; `Cache-Control: public, max-age=300`; unreadable data → `/errors/monitoring-unavailable` 503). OpenAPI at `/api/docs`.
 
 Problem `type`s: `/errors/station-not-supported` (404), `/errors/validation` (422), `/errors/length-required` (411),
 `/errors/payload-too-large` (413, body > 4 KB), `/errors/model-unavailable` (503), `/errors/board-unavailable`
@@ -440,18 +449,26 @@ profile `app`). The serving import path never loads scikit-learn (guard test).
 
 ## 9. Monitoring and continuous training
 
-Daily `monitor` Lambda (04:30, after `etl_daily`):
-1. Load champion artifacts (same loader as API).
-2. Read silver D-1 → build features → **batch score all of yesterday's departures** (shadow evaluation, independent of user traffic).
-3. **Model performance:** Brier, AUC, log loss, ECE on yesterday's real outcomes.
-4. **Data drift:** Evidently `Report([DataDriftPreset()])` — current = D-1 features, reference = `reference_sample.parquet` filtered to the same weekday type (weekday vs weekend) to reduce seasonal false alarms.
-5. **Prediction drift:** distribution of `p_late` vs. reference predictions.
-6. Publish: HTML report → `public/reports/`, JSON → `public/health/latest.json` + append `history.json`.
-7. Emit CloudWatch metrics (namespace `Puenktlich`): `DriftShare`, `BrierDaily`, `AUCDaily`, `LabeledEvents`.
-8. Evaluate triggers (`configs/monitoring.yaml`):
-   - `DriftShare > 0.30` for **3 consecutive days**, or
-   - `BrierDaily > champion test_brier × 1.10` for 3 consecutive days
-   → write `control/retrain_requested.json` `{reason, metrics, requested_at}`.
+Daily `monitor` Lambda (04:30 Berlin, after `etl_daily`; `api` image, 512 MB; Phase 9 spec
+`docs/superpowers/specs/2026-11-18-phase-9-monitoring-design.md`):
+1. Load the champion (SSM pointer → `load_bundle`, checksums) and its `reference_sample.parquet` (checksum-verified).
+2. Read live silver + quality report of D-1; drop cancelled rows and rows in flagged gaps (same `gap_masks` as training) → **score all remaining departures** (shadow evaluation, independent of user traffic). No silver → `no_data`; < 2,000 labelled rows → `too_few_rows` (never counted).
+3. **Model performance:** Brier, ROC-AUC, log loss, ECE, actual late rate, mean `p_late` (numpy/scipy; same definitions as training).
+4. **Data drift:** Evidently's default tests computed with scipy (ADR 0003): Wasserstein distance normed by the reference std (numeric), Jensen–Shannon distance (categorical); drifted when ≥ 0.1. Reference = reference sample of the same day type (weekday vs weekend/holiday). `DriftShare` counts only the 7 content inputs; the 4 calendar inputs always differ on one day and are reported, not counted.
+5. **Prediction drift:** `p_late` vs the reference predictions (reported separately).
+6. Write `monitoring/daily/date=D.json` and upsert `monitoring/history.json` (re-runs replace the day).
+7. Emit CloudWatch metrics (namespace `Puenktlich`, `service=monitor`): `LabeledEvents` (always), `BrierDaily`, `AUCDaily`, `BrierRatio`, `DriftShare` (only for `ok` days).
+8. Evaluate triggers (`configs/monitoring.yaml`): the last **3 consecutive days**, same model, all
+   `DriftShare > 0.30` or all `BrierDaily > champion test_brier × 1.10` → write
+   `control/retrain_requested.json` `{request_id, state: requested, reason, days, metrics, forced, thresholds}`
+   unless a request is still `requested`. Manual runs may pass `threshold_overrides` (forced demo): only
+   that run's trigger decision changes, stored verdicts never do.
+
+Retraining (route A, laptop): `make retrain-sync` (S3 live silver + flag → MinIO; AWS flag →
+`picked_up`) → Airflow `drift_watch` → `training_pipeline` (HF + live silver; live wins on days both
+have; Nov 1 → first live day rebuilt from HF raw by `make hf-raw-fill`) → gate → `control/decisions/`
+→ `make retrain-publish` (decision → `monitoring/retrains.json`; a gate-approved release also publishes
+the champion to S3 + SSM).
 
 `ingest` emits `EventsIngested` per run; `etl_daily` emits `EmptyStations` (Powertools EMF, namespace
 `Puenktlich`, dimension `service`).
@@ -465,9 +482,9 @@ Daily `monitor` Lambda (04:30, after `etl_daily`):
 | Empty stations | `EmptyStations` > 0 (a station had no departures yesterday: EVA drift or a feed gap) — Phase 7 |
 | API errors | API Gateway `5xx` > 5 in 5 min |
 | API throttling | Lambda `Throttles` > 0 |
-| Monitor missing | `LabeledEvents` missing for 26 h |
-| Drift | `DriftShare` > 0.30 |
-| Performance | `BrierDaily` above threshold |
+| Monitor missing | no `LabeledEvents` datapoint in 26 hourly periods (missing = breaching) — Phase 9 |
+| Drift | `DriftShare` > 0.30 on 3 consecutive days — Phase 9 |
+| Performance | `BrierRatio` > 1.10 on 3 consecutive days — Phase 9 |
 | Budget | AWS Budgets: actual > $1 and forecast > $5 |
 
 Keep **≤ 10 custom metrics** and **≤ 10 alarms** (free-tier limits).
@@ -657,7 +674,7 @@ puenktlich/
 | ML | LightGBM 4, scikit-learn (metrics, isotonic) | Strong on tabular, CPU-friendly, native categorical support |
 | Orchestration | Apache Airflow 3 (TaskFlow, `airflow.sdk`) | Industry standard, asked for in job ads |
 | Tracking/registry | MLflow 3 (Postgres + MinIO) | Tracking, registry, aliases |
-| Monitoring | Evidently (≥ 0.7 API: `from evidently import Report`, `from evidently.presets import DataDriftPreset`) | Drift reports |
+| Monitoring | numpy + scipy (Evidently's default drift tests; ADR 0003) | Daily performance and drift |
 | API | FastAPI + Mangum | Typed, OpenAPI, runs on Lambda |
 | HTTP client | httpx + tenacity | Timeouts, retries with backoff |
 | XML | defusedxml | Safe XML parsing |

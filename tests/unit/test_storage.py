@@ -9,7 +9,7 @@ from pydantic import SecretStr
 
 from dbdelay.config import Settings
 from dbdelay.errors import ConfigError, ExternalServiceError, NotFoundError
-from dbdelay.storage import ObjectStore, make_s3_client
+from dbdelay.storage import ObjectStore, get_optional_bytes, make_s3_client
 
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
@@ -158,3 +158,31 @@ def test_file_transfers_wrap_storage_errors(
     monkeypatch.setattr(s3_client, "download_file", unreachable)
     with pytest.raises(ExternalServiceError):
         ObjectStore(s3_client, BUCKET).download_file("k", tmp_path / "out.bin")
+
+
+def test_get_optional_bytes_missing_is_none(store: ObjectStore) -> None:
+    assert get_optional_bytes(store, "nope") is None
+    store.put_bytes("yes", b"1")
+    assert get_optional_bytes(store, "yes") == b"1"
+
+
+def test_get_optional_bytes_access_denied_is_none(
+    store: ObjectStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Without s3:ListBucket, S3 answers 403 AccessDenied for a missing key (Phase 7).
+    def denied(**_: object) -> None:
+        raise ClientError({"Error": {"Code": "AccessDenied", "Message": "x"}}, "GetObject")
+
+    monkeypatch.setattr(store._client, "get_object", denied)
+    assert get_optional_bytes(store, "x") is None
+
+
+def test_get_optional_bytes_reraises_other_errors(
+    store: ObjectStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(**_: object) -> None:
+        raise ClientError({"Error": {"Code": "InternalError", "Message": "x"}}, "GetObject")
+
+    monkeypatch.setattr(store._client, "get_object", broken)
+    with pytest.raises(ExternalServiceError):
+        get_optional_bytes(store, "x")
