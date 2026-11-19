@@ -117,6 +117,16 @@ def model_info(fetch: Fetch, base: str) -> str | None:
     return None if resp.status == HTTPStatus.OK else f"status {resp.status}"
 
 
+def monitoring_served(fetch: Fetch, base: str) -> str | None:
+    """Phase 9: the health page's data (empty lists before the first monitor run are fine)."""
+    resp, data = _get_json(fetch, base, "/api/v1/monitoring")
+    if resp.status != HTTPStatus.OK or not isinstance(data, dict):
+        return f"status {resp.status}"
+    if not isinstance(data.get("history"), list) or not isinstance(data.get("retrains"), list):
+        return "missing history/retrains lists"
+    return None
+
+
 def api_docs(fetch: Fetch, base: str) -> str | None:
     resp = fetch("GET", base + "/api/docs", None)
     html = resp.headers.get("content-type", "").startswith("text/html")
@@ -161,6 +171,7 @@ CHECKS: dict[str, Check] = {
         board_is_sample,
         predict_post,
         model_info,
+        monitoring_served,
         api_docs,
         api_404_is_problem_json,
         deep_link_serves_spa,
