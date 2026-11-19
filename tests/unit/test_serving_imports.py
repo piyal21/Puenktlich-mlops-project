@@ -27,6 +27,7 @@ SERVING_MODULES = [
     "dbdelay.monitoring.history",
     "dbdelay.monitoring.triggers",
     "dbdelay.monitoring.job",
+    "monitor_handler",
     "app.main",
 ]
 

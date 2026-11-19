@@ -70,6 +70,8 @@ class Settings(BaseSettings):
     stations_file: Path = Path("configs/stations.yaml")
     # Training config (relative to the working directory; containers set an absolute path).
     training_config_file: Path = Path("configs/training.yaml")
+    # Monitoring config (Phase 9; the monitor Lambda runs in /var/task where it is copied).
+    monitoring_config_file: Path = Path("configs/monitoring.yaml")
 
 
 @lru_cache(maxsize=1)

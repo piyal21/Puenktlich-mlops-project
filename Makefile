@@ -42,7 +42,7 @@ DOCKER_ECR_CONFIG := $(subst \,/,$(or $(HOME),$(USERPROFILE)))/.docker-puenktlic
 # Fail fast with one clear line when the 12 h `aws login` session is gone.
 $(AWS_TARGETS): aws-check
 
-.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed parity-check reconcile ingest-local etl-live-local jobs-requirements jobs-image-build jobs-image-push put-db-api-secrets app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan image-scan tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply aws-check aws-py-profile image-push web-deploy smoke-prod smoke-prod-live
+.PHONY: help setup up down logs ps lint fmt typecheck test test-integration check airflow-env airflow-up airflow-down test-dags backfill baseline train rollback train-dag seed parity-check reconcile ingest-local etl-live-local monitor-local jobs-requirements jobs-image-build jobs-image-push put-db-api-secrets app-up app-down api-dev api-requirements web-check publish-model rollback-prod upload-sample-days tf-fmt tf-validate tf-scan image-scan tf-bootstrap-plan tf-bootstrap-apply tf-init tf-plan tf-plan-stage-a tf-apply aws-check aws-py-profile image-push web-deploy smoke-prod smoke-prod-live
 
 help: ## Show available targets
 	@uv run python -c "import re; [print(f'{m[0]:<18} {m[1]}') for m in re.findall(r'^([a-z-]+):.*?## (.*)$$', open('Makefile', encoding='utf-8').read(), re.M)]"
@@ -136,6 +136,9 @@ ingest-local: ## One live ingest run: real DB API (keys from .env) -> local MinI
 
 etl-live-local: ## Live bronze -> silver + quality report in local MinIO for DAY (UTC; Phase 7)
 	uv run python scripts/live_jobs.py etl --day $(DAY)
+
+monitor-local: ## Run the daily monitor for DAY (UTC) against local MinIO (Phase 9); FORCE_DRIFT=0 forces a flag
+	uv run python -m dbdelay.monitoring.cli --day $(DAY) $(if $(FORCE_DRIFT),--drift-share-max $(FORCE_DRIFT),)
 
 jobs-requirements: ## Regenerate the jobs image's hash-pinned requirements from uv.lock
 	uv export --frozen --no-dev --extra jobs --no-emit-project --format requirements-txt -o services/jobs/requirements.txt
