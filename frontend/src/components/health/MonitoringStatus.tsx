@@ -7,7 +7,7 @@ const LOOK = {
   ok: { label: "OK", icon: CircleCheck, tone: "bg-risk-low-soft text-risk-low" },
   watch: { label: "Watch", icon: CircleAlert, tone: "bg-risk-medium-soft text-risk-medium" },
   retrain: {
-    label: "Retrain requested",
+    label: "3 bad days in a row",
     icon: RefreshCw,
     tone: "bg-risk-high-soft text-risk-high",
   },
@@ -19,7 +19,7 @@ const EXPLAIN = {
   watch:
     "At least one of the last 3 days was worse than the limits. 3 bad days in a row request a retrain.",
   retrain:
-    "3 bad days in a row: a retrain was requested. A new model must pass the same quality gate.",
+    "The monitor asks for a retrain once per bad streak; the decision appears under Retraining below. A new model must pass the same quality gate.",
   late: "The daily check has not run for more than 2 days, so these numbers are old.",
 } as const;
 

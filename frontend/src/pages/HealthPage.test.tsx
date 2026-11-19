@@ -74,7 +74,7 @@ describe("HealthPage", () => {
     const status = await screen.findByRole("status", { name: /monitoring status/i });
     expect(within(status).getByText("Monitor late")).toBeInTheDocument();
   });
-  it("shows Retrain requested after three bad days", async () => {
+  it("shows 3 bad days in a row after three bad days", async () => {
     const bad = {
       drift_bad: false,
       performance_bad: true,
@@ -86,7 +86,8 @@ describe("HealthPage", () => {
     );
     renderWith(json(MODEL), json({ ...MONITORING, history }));
     const status = await screen.findByRole("status", { name: /monitoring status/i });
-    expect(within(status).getByText("Retrain requested")).toBeInTheDocument();
+    expect(within(status).getByText("3 bad days in a row")).toBeInTheDocument();
+    expect(within(status).getByText(/decision appears under Retraining/)).toBeInTheDocument();
   });
   it("marks calendar columns as not counted in the drift table", async () => {
     renderWith(json(MODEL), json(MONITORING));
