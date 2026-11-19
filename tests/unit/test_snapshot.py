@@ -4,7 +4,13 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from dbdelay.data.silver import quality_key, write_silver_month
+from dbdelay.data.live_report import LiveQualityReport, live_quality_key, live_silver_key
+from dbdelay.data.silver import (
+    SILVER_ARROW_SCHEMA,
+    quality_key,
+    to_parquet_bytes,
+    write_silver_month,
+)
 from dbdelay.errors import DataValidationError
 from dbdelay.storage import ObjectStore
 from dbdelay.training.split import (
@@ -118,3 +124,91 @@ def test_only_empty_partitions_is_an_error(s3_store: ObjectStore) -> None:
     write_silver_month(silver_day("2026-04-01").iloc[0:0], s3_store, "2026-04")
     with pytest.raises(DataValidationError, match="no silver"):
         latest_silver_day(s3_store)
+
+
+def _put_live(store: ObjectStore, day: str, n: int, **report: object) -> None:
+    rows = silver_day(day, n, hour_utc=9)
+    rows["source"] = "live"
+    store.put_bytes(
+        live_silver_key(date.fromisoformat(day)), to_parquet_bytes(rows, SILVER_ARROW_SCHEMA)
+    )
+    store.put_bytes(
+        live_quality_key(date.fromisoformat(day)),
+        _live_report(date.fromisoformat(day), **report).model_dump_json().encode(),
+    )
+
+
+def _live_report(day: date, **kw: object) -> LiveQualityReport:
+    base: dict[str, object] = {
+        "day": day,
+        "rows_out": 0,
+        "drops": {},
+        "late_rate": None,
+        "cancelled_rate": None,
+        "stations": [],
+        "low_volume_hours": [],
+        "fchg_runs_ok": {},
+        "longest_fchg_gap_min": {},
+        "plan_hours_missing": {},
+        "never_seen_in_fchg": 0,
+        "fchg_only_stops": 0,
+        "empty_stations": [],
+        "content_hash": "x",
+    }
+    return LiveQualityReport.model_validate(base | kw)
+
+
+def test_live_wins_on_overlap(s3_store: ObjectStore, tmp_path: Path) -> None:
+    put_march_silver(s3_store)
+    _put_live(s3_store, "2026-03-31", 6)
+    manifest = build_snapshot(s3_store, MARCH_CONFIG, tmp_path)
+    assert manifest.splits["test"].rows == 28 - 4 + 6
+    assert manifest.rows_by_source == {"hf": 63 + 24 + 24, "live": 6}
+    test = load_snapshot_split(s3_store, manifest.snapshot_id, "test", tmp_path)
+    assert set(test.loc[test["planned_departure_utc"].dt.day == 31, "source"]) == {"live"}
+
+
+def test_rows_by_source_hf_only(s3_store: ObjectStore, tmp_path: Path) -> None:
+    put_march_silver(s3_store)
+    manifest = build_snapshot(s3_store, MARCH_CONFIG, tmp_path)
+    assert manifest.rows_by_source == {"hf": 63 + 24 + 28}
+    assert manifest.quality_months == ["2026-03"]
+
+
+def test_sources_change_the_snapshot_id(s3_store: ObjectStore, tmp_path: Path) -> None:
+    put_march_silver(s3_store)
+    hf_only = build_snapshot(s3_store, MARCH_CONFIG, tmp_path / "a")
+    _put_live(s3_store, "2026-03-31", 4)
+    with_live = build_snapshot(s3_store, MARCH_CONFIG, tmp_path / "b")
+    assert with_live.snapshot_id != hf_only.snapshot_id
+
+
+def test_live_quality_gaps_excluded(s3_store: ObjectStore, tmp_path: Path) -> None:
+    put_march_silver(s3_store)
+    _put_live(s3_store, "2026-03-31", 6, low_volume_hours=["2026-03-31T11"])
+    manifest = build_snapshot(s3_store, MARCH_CONFIG, tmp_path)
+    # The live rows run 09:00-09:05 UTC = 11:00 local (CEST since 29 March): all 6 flagged.
+    assert manifest.excluded["gap_hours"] == 4 + 6
+    assert manifest.splits["test"].rows == 24
+
+
+def test_missing_live_report_is_an_error(s3_store: ObjectStore, tmp_path: Path) -> None:
+    put_march_silver(s3_store)
+    _put_live(s3_store, "2026-03-31", 6)
+    s3_store._client.delete_object(Bucket=s3_store.bucket, Key=live_quality_key(date(2026, 3, 31)))
+    with pytest.raises(DataValidationError, match="quality report"):
+        build_snapshot(s3_store, MARCH_CONFIG, tmp_path)
+
+
+def test_latest_day_across_sources(s3_store: ObjectStore) -> None:
+    put_march_silver(s3_store)
+    _put_live(s3_store, "2026-04-02", 3)
+    assert latest_silver_day(s3_store) == date(2026, 4, 2)
+
+
+def test_live_fills_a_day_hf_lacks(s3_store: ObjectStore, tmp_path: Path) -> None:
+    put_march_silver(s3_store)
+    _put_live(s3_store, "2026-04-01", 5)
+    cfg = MARCH_CONFIG.model_copy(update={"end_date": date(2026, 4, 1)})
+    manifest = build_snapshot(s3_store, cfg, tmp_path)
+    assert manifest.rows_by_source["live"] == 5
