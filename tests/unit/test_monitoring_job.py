@@ -209,16 +209,6 @@ def test_flag_not_overwritten_while_requested(stores: ObjectStore) -> None:
     assert RetrainRequest.model_validate_json(stores.get_bytes(FLAG_KEY)) == first
 
 
-def test_flag_replaced_once_done(stores: ObjectStore) -> None:
-    _seed_history(stores, BAD)
-    _put_day(stores, DAY)
-    first = _run(stores, cfg=STRICT).flag_written
-    assert first is not None
-    done = first.model_copy(update={"state": "done"})
-    stores.put_bytes(FLAG_KEY, done.model_dump_json().encode())
-    assert _run(stores, cfg=STRICT, now=NOW + timedelta(days=1)).flag_written is not None
-
-
 def test_forced_flag_keeps_history_verdicts(stores: ObjectStore) -> None:
     _seed_history(stores, GOOD, brier=0.1, brier_ratio=0.9, drift_share=0.2)
     _put_day(stores, DAY)
@@ -239,3 +229,53 @@ def test_all_rows_in_gaps_is_too_few_rows(stores: ObjectStore) -> None:
     assert r.performance.rows == 0
     assert r.performance.brier is None
     assert r.excluded_rows["gap_station_day"] == 200
+
+
+def test_no_new_flag_for_an_overlapping_streak_after_pick_up(stores: ObjectStore) -> None:
+    # Review finding: day 4 of a still-bad streak re-flagged every day after a rejected retrain.
+    _seed_history(stores, BAD)
+    _put_day(stores, DAY)
+    first = _run(stores, cfg=STRICT).flag_written
+    assert first is not None
+    for state in ("picked_up", "done"):
+        stores.put_bytes(
+            FLAG_KEY, first.model_copy(update={"state": state}).model_dump_json().encode()
+        )
+        nxt = DAY + timedelta(days=1)
+        _put_day(stores, nxt)
+        again = run_monitor(
+            data=stores,
+            models=stores,
+            pointer=ObjectStorePointer(stores),
+            day=nxt,
+            cfg=STRICT,
+            now=NOW + timedelta(days=1),
+        )
+        assert again.flag_written is None, state
+
+
+def test_new_flag_after_a_fresh_streak(stores: ObjectStore) -> None:
+    _seed_history(stores, BAD)
+    _put_day(stores, DAY)
+    first = _run(stores, cfg=STRICT).flag_written
+    assert first is not None
+    stores.put_bytes(
+        FLAG_KEY, first.model_copy(update={"state": "done"}).model_dump_json().encode()
+    )
+    flags = []
+    for offset in (1, 2, 3):
+        day = DAY + timedelta(days=offset)
+        _put_day(stores, day)
+        flags.append(
+            run_monitor(
+                data=stores,
+                models=stores,
+                pointer=ObjectStorePointer(stores),
+                day=day,
+                cfg=STRICT,
+                now=NOW + timedelta(days=offset),
+            ).flag_written
+        )
+    assert flags[:2] == [None, None]
+    assert flags[2] is not None
+    assert flags[2].days[0] == DAY + timedelta(days=1)

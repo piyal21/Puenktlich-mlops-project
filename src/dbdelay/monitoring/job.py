@@ -78,6 +78,19 @@ def read_flag(store: ObjectStore) -> RetrainRequest | None:
         return None
 
 
+def _already_requested(current: RetrainRequest | None, request: RetrainRequest) -> bool:
+    """A waiting request, or one (any state) for the same model whose days overlap this streak.
+
+    Without this, a streak that stays bad after a rejected retrain would request a retrain
+    every day; a new request needs a fresh, non-overlapping streak (final review, Phase 9).
+    """
+    if current is None:
+        return False
+    if current.state == "requested":
+        return True
+    return current.model_version == request.model_version and max(current.days) >= min(request.days)
+
+
 def _champion(models: ObjectStore, pointer: ModelPointer) -> tuple[ModelBundle, float]:
     state = pointer.get()
     if state is None:
@@ -183,11 +196,9 @@ def run_monitor(  # noqa: PLR0913 - keyword-only, one call site per runtime
     )
     request = evaluate_trigger(history, cfg, now=now, overrides=overrides)
     written = None
-    if request is not None:
-        current = read_flag(data)
-        if current is None or current.state != "requested":
-            data.put_bytes(FLAG_KEY, request.model_dump_json(indent=2).encode(), JSON)
-            written = request
+    if request is not None and not _already_requested(read_flag(data), request):
+        data.put_bytes(FLAG_KEY, request.model_dump_json(indent=2).encode(), JSON)
+        written = request
     get_logger("monitor").info(
         "day monitored",
         extra={
