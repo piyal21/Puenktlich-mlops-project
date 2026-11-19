@@ -41,19 +41,29 @@ Only measured numbers; anything not measured is `TBD`.
   → `training_pipeline` (snapshot `2026-11-17_aa477d29`: train 3,140,898 / valid 173,267 / test 150,530 rows;
   HF 3,415,394 + live 49,301) → gate **rejected** challenger v6: test Brier 0.1477 vs champion 0.1555, AUC 0.800 vs
   0.781, ECE 0.013 vs 0.040, but `slice_auc` failed (train type NBE −0.0525 > 0.02). Champion stays v1.
+- **Owner follow-up (2026-11-19): gate relaxed + v7 live.** The per-train-type AUC check now judges only types with
+  ≥ 2,000 test rows (`gate.min_slice_rows: 2000`; limit 0.02 unchanged): NBE had 797 rows and AUC ≈ 0.44–0.50 for
+  both models. Re-run on the window ending 2026-11-18 (snapshot `2026-11-18_c0373622`): challenger **v7 passed**
+  every check — test Brier 0.1500 vs champion v1 0.1586 vs baseline 0.1652, ROC-AUC 0.7996 vs 0.7805, ECE 0.0158
+  vs 0.0469 (150,437 test rows, late rate 26.7 %). The gate task's Airflow token expired while the PC slept (403
+  after the branch decision); release → smoke test → decision record were finished with the same pipeline functions
+  in the Airflow container. `make retrain-publish`: prod SSM pointer 1 → **7**, both decisions on the health page.
+- Real scheduled run 2026-11-19 03:30 UTC failed: EventBridge Scheduler sends its event envelope when a target has
+  no input → handler treats it as `{}`, schedule sends `{}` (test-first, deployed; 18 Nov monitored: 12,951 rows).
 - Final review (opus): 0 Critical, 2 Important fixed test-first (re-flag on overlapping streaks; gap flags per
   source), 1 Minor re-graded to Important and fixed (status wording); 6 minors deferred (below).
 
 **Known gaps / open items**
-- Owner decision: the per-train-type gate (max AUC drop 0.02) blocked a model that is better overall; keep or relax.
-- Publishing this decision to the site (`make retrain-publish`) needs a fresh `aws login`.
+- Owner relaxed the per-train-type gate (types with < 2,000 test rows are listed, not judged); v7 is the champion.
+- Airflow tasks still die when the PC sleeps (task token); keep the laptop awake during retrains.
 - Monitor memory 464 of 512 MB (watch, like the ETL's 402 MB).
 - Deferred minors: sync writes the local flag before marking AWS `picked_up`; `scheduled-<date>` decision ids can
   collide; a top-level JSON `null` in history → 500 instead of 503; monitor IAM `PutObject` could be narrowed to
   `monitoring/daily/*` + `history.json`; charts place points by index and plot `too_few_rows` days; a corrupt fill
   report shows a traceback.
 - Local MLflow: SQLAlchemy 2.1 (Phase 8 upgrade) needed `postgresql+psycopg2://` — fixed here.
-- From Phase 7: delete old state versions holding DB API keys, rotate keys. 6 green Dependabot PRs await merge.
+- From Phase 7: the 4 state versions holding DB API keys were deleted (owner request; 16 remaining versions checked:
+  none holds the keys). Rotating the keys is still the owner's. 6 Dependabot PRs merged; #22–#25 are new.
 
 **Docs touched**
 - `docs/rules.md` §2, `docs/adr/0003-drift-without-evidently.md`, `docs/architecture.md` §3.2/§4/§5/§7/§9/§15,

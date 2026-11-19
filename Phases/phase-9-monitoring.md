@@ -85,6 +85,12 @@ vs 0.040) but its ROC-AUC for one train type (NBE) dropped by 0.053, above the 0
 (fixed: `too_few_rows`); the Phase 8 SQLAlchemy 2.1 upgrade broke the local MLflow server (fixed: explicit
 `postgresql+psycopg2://`).
 
+**Follow-up the same day (owner: relax the slice rule):** the per-train-type check now judges only train types
+with at least 2,000 test trains (NBE had 797, both models near chance on it). The re-run (window ending 18 Nov)
+produced challenger **v7**, which passed every check: Brier 0.1500 vs 0.1586, ROC-AUC 0.7996 vs 0.7805, ECE 0.0158
+vs 0.0469. `make retrain-publish` made **v7 the live model** (SSM pointer 1 → 7) and put both decisions on the
+health page. Also found and fixed: the first scheduled 03:30 run failed on EventBridge Scheduler's event envelope.
+
 ## 6. How to run it
 
 ```bash
@@ -99,7 +105,7 @@ aws lambda invoke --function-name puenktlich-monitor --payload '{"day":"YYYY-MM-
 
 ## 7. Known gaps
 
-- Owner decision: keep or relax the per-train-type gate rule that rejected an overall better model.
+- Airflow tasks die when the PC sleeps (expired task token) — keep the laptop awake during a retrain.
 - Monitor memory 464 of 512 MB.
 - Deferred minors (CHANGELOG): flag copy order in sync, scheduled decision ids, top-level JSON null, narrower monitor
   `PutObject`, chart x-axis by index, fill-report traceback.

@@ -283,6 +283,7 @@ gate:
   max_brier_regression_vs_champion: 0.00    # challenger must be <= champion
   max_auc_drop_vs_champion: 0.005
   max_slice_auc_drop: 0.02                  # per train_type
+  min_slice_rows: 2000                      # Phase 9: smaller train types are listed, not judged
   min_test_rows: 20000
 ```
 If there is no champion yet (first run), only the baseline and slice checks apply.
