@@ -211,13 +211,14 @@ You learn: CI/CD design, OIDC federation, image scanning, deployment gates, supp
 
 **Goal:** the system watches itself and retrains when needed — and shows it publicly.
 
-Tasks
-- [ ] `dbdelay/monitoring/performance.py` (daily Brier/AUC/ECE on D-1), `drift.py` (Evidently `DataDriftPreset`, weekday/weekend-matched reference), `publish.py` (HTML report + `latest.json` + `history.json`), `triggers.py` (3-day rules).
-- [ ] `monitor` handler + schedule; CloudWatch metrics `DriftShare`, `BrierDaily`, `AUCDaily`, `LabeledEvents`; remaining alarms from `architecture.md` §9.
-- [ ] DAG `drift_watch` (deferrable S3 sensor on `control/retrain_requested.json` → trigger `training_pipeline` → archive flag).
-- [ ] Switch `pointer.py` to SSM in prod; `training_pipeline` release step writes to real S3 + SSM; smoke test waits for the API to report the new version.
-- [ ] Model Health page reads `/health/latest.json` + `history.json`; links to the latest drift report.
-- [ ] `docs/runbook.md`: every alarm → meaning → first checks → fix.
+Tasks (status 2026-11-19; spec `docs/superpowers/specs/2026-11-18-phase-9-monitoring-design.md`)
+- [x] `dbdelay/monitoring/`: `performance.py` (daily Brier/AUC/log loss/ECE on D-1), `drift.py` (Evidently's default tests computed with scipy, ADR 0003; weekday/weekend-matched reference; calendar inputs reported, not counted), `history.py` + `job.py` (daily JSON + `history.json` in the data lake, served by `GET /api/v1/monitoring` instead of public files), `triggers.py` (3-day rules, forced-demo overrides).
+- [x] `monitor` Lambda on the API image + 04:30 schedule; CloudWatch metrics `LabeledEvents`, `BrierDaily`, `AUCDaily`, `BrierRatio`, `DriftShare`; alarms monitor missing / drift / performance (9 alarms in total).
+- [x] DAG `drift_watch` (30-min short-circuit on the local flag, fed by `make retrain-sync`; no AWS credentials in Airflow) → `training_pipeline` → decision record; `make retrain-publish`.
+- [x] Prod pointer is SSM since Phase 6; a gate-approved retrain reaches prod via `make retrain-publish` (route A, laptop).
+- [x] Model Health page: daily charts (Brier, AUC, drift share, actual vs predicted late rate), drift table, retrain log, status.
+- [x] `docs/runbook.md`: every alarm → meaning → first checks → fix.
+- [x] Training reads HF + live silver (live wins per day); Nov 1–12 rebuilt from HF raw (`make hf-raw-fill`).
 
 Exit criteria
 - Health page shows ≥ 7 days of daily metrics.

@@ -16,3 +16,4 @@ what actually happened.
 | 6 | Cloud infrastructure — Terraform, public CloudFront site, API on Lambda, SSM model pointer, sample board every 15 min | ✅ merged (PR #3, `459dee2`) | [phase-6-cloud-infra.md](phase-6-cloud-infra.md) |
 | 7 | Live data pipeline — DB API every 15 min, nightly live silver with gap flags, HF parity + reconciliation, "Going to" any stop | ✅ live 2026-11-18, PR #4 | [phase-7-live-pipeline.md](phase-7-live-pipeline.md) |
 | 8 | CI/CD (route A) — GitHub Actions checks on every PR, image + dependency scans, protected `main`, Dependabot; laptop deploys | ✅ PR #5 | [phase-8-ci-cd.md](phase-8-ci-cd.md) |
+| 9 | Monitoring & continuous training — daily monitor on AWS, drift + performance, health page, real retrain loop (gate rejected v6) | ✅ PR (this branch) | [phase-9-monitoring.md](phase-9-monitoring.md) |

@@ -3,6 +3,63 @@
 One entry per phase branch (owner rule, from Phase 2 on). Phases 0–1 are described in [`Phases/`](Phases/).
 Only measured numbers; anything not measured is `TBD`.
 
+## Phase 9 — Monitoring & continuous training (`phase-9/monitoring`)
+
+**Built**
+- `dbdelay.monitoring`: daily performance (Brier, ROC-AUC, log loss, ECE, actual vs predicted late rate; numpy/scipy,
+  same definitions as training), drift (Evidently's default tests computed with scipy: Wasserstein normed /
+  Jensen–Shannon, threshold 0.1; reference = champion's reference sample, same day type), history, 3-day retrain
+  trigger with forced-demo overrides, flag states `requested → picked_up → done`, decision records.
+- `puenktlich-monitor` Lambda on the **API image** (handler `monitor_handler.handler`), daily 04:30 Berlin; results in
+  the data lake (`monitoring/daily/`, `history.json`, `retrains.json`), served by **`GET /api/v1/monitoring`**.
+- 5 EMF metrics and 3 alarms (monitor missing, drift, performance) → 9 alarms, 7 custom metrics (free tier 10/10).
+- Retrain loop (route A): `make retrain-sync` (S3 live silver + flag → MinIO) → Airflow `drift_watch` →
+  `training_pipeline` (+ `record_decision`) → `make retrain-publish` (decisions → S3; gate-approved release → prod).
+- Training reads HF **and** live silver (live wins per day, each source's own gap flags); `make hf-raw-fill` rebuilds
+  days from HF raw until HF publishes the month; HF 2026-09/10 backfilled.
+- Model Health page: status, daily charts (SVG, dataviz-validated colours, table alternative per chart), drift table,
+  retrain log. `docs/runbook.md` for all alarms; ADR 0003.
+
+**Key decisions**
+- Evidently rejected for the Lambda (measured: +177 MB RSS, +7.7 s import) → same tests via scipy, already in the
+  API image (ADR 0003, rules.md §2). Monitor on the API image (needs LightGBM; no new dependency).
+- DriftShare counts the 7 content inputs only; calendar inputs always differ on one day.
+- Results via the API, not public files (`make web-deploy` replaces the web bucket).
+- Triggers armed from the first run; a new request needs a fresh, non-overlapping streak.
+- Gate unchanged. A gate-approved retrain is published by `make retrain-publish` (the gate decides, not a person).
+- No Recharts: one small SVG chart component (no new npm dependency).
+
+**Tested**
+- `make check`: 676 passed, coverage 96.15 %. `make web-check`: 86 passed; npm audit (runtime, high) 0.
+  `make test-dags` passed. `make tf-scan` exit 0, tflint 0 issues, `terraform validate` OK.
+- AWS: `tf-apply` 9 added, 4 changed, 0 destroyed. Monitor backfill 13–17 Nov: 7.1–10.7 s, 361–464 MB of 512 MB.
+  `make smoke-prod-live` 11/11 (new `monitoring_served`). Health page in headless Chrome: real data, 0 CSP errors.
+- Real monitoring (live days 14–17 Nov): Brier ratio 1.05 / 0.97 / 1.24 / 1.31; actual late rate 0.22–0.33 vs
+  predicted 0.19–0.23; DriftShare 0.43–0.57 (destination_key 0.31–0.33, line_key 0.22–0.23 vs same-sample noise
+  0.10 / 0.08). 13 Nov: every station-day flagged → `too_few_rows`.
+- **Real loop end to end:** AWS monitor raised drift flag `20261119T010455Z-drift` (14–16 Nov) → sync → `drift_watch`
+  → `training_pipeline` (snapshot `2026-11-17_aa477d29`: train 3,140,898 / valid 173,267 / test 150,530 rows;
+  HF 3,415,394 + live 49,301) → gate **rejected** challenger v6: test Brier 0.1477 vs champion 0.1555, AUC 0.800 vs
+  0.781, ECE 0.013 vs 0.040, but `slice_auc` failed (train type NBE −0.0525 > 0.02). Champion stays v1.
+- Final review (opus): 0 Critical, 2 Important fixed test-first (re-flag on overlapping streaks; gap flags per
+  source), 1 Minor re-graded to Important and fixed (status wording); 6 minors deferred (below).
+
+**Known gaps / open items**
+- Owner decision: the per-train-type gate (max AUC drop 0.02) blocked a model that is better overall; keep or relax.
+- Publishing this decision to the site (`make retrain-publish`) needs a fresh `aws login`.
+- Monitor memory 464 of 512 MB (watch, like the ETL's 402 MB).
+- Deferred minors: sync writes the local flag before marking AWS `picked_up`; `scheduled-<date>` decision ids can
+  collide; a top-level JSON `null` in history → 500 instead of 503; monitor IAM `PutObject` could be narrowed to
+  `monitoring/daily/*` + `history.json`; charts place points by index and plot `too_few_rows` days; a corrupt fill
+  report shows a traceback.
+- Local MLflow: SQLAlchemy 2.1 (Phase 8 upgrade) needed `postgresql+psycopg2://` — fixed here.
+- From Phase 7: delete old state versions holding DB API keys, rotate keys. 6 green Dependabot PRs await merge.
+
+**Docs touched**
+- `docs/rules.md` §2, `docs/adr/0003-drift-without-evidently.md`, `docs/architecture.md` §3.2/§4/§5/§7/§9/§15,
+  `docs/prd.md` §6.3, `docs/runbook.md` (new), `docs/phases.md`, README, CLAUDE.md, spec + plan,
+  `Phases/phase-9-monitoring.md`, `Phases/README.md`.
+
 ## Phase 8 — CI/CD, route A (`phase-8/ci-cd`)
 
 **Built**
