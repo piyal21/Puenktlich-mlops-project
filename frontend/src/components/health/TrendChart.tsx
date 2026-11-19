@@ -19,10 +19,10 @@ interface Point {
   values: (number | null)[];
 }
 
-const W = 600;
-const H = 180;
-const PAD = { top: 12, right: 92, bottom: 26, left: 48 };
-const MUTED = "fill-[var(--text-muted)] text-[11px]";
+const W = 400;
+const H = 170;
+const PAD = { top: 12, right: 78, bottom: 26, left: 44 };
+const MUTED = "fill-[var(--text-muted)] text-[12px]";
 
 function domain(series: Series[], reference?: Reference): [number, number] {
   const values = series.flatMap((s) => s.values).filter((v): v is number => v !== null);
@@ -199,7 +199,7 @@ export function TrendChart({
                   key={e.label}
                   x={W - PAD.right + 6}
                   y={e.y + 4}
-                  className="fill-[var(--text)] text-[11px]"
+                  className="fill-[var(--text)] text-[12px]"
                 >
                   {e.label}
                 </text>
