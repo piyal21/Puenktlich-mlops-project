@@ -76,6 +76,8 @@ class GateConfig(_Section):
     max_brier_regression_vs_champion: float = Field(ge=0)
     max_auc_drop_vs_champion: float = Field(ge=0)
     max_slice_auc_drop: float = Field(ge=0)
+    # Slices with fewer challenger test rows are listed, not judged (AUC noise; owner 2026-11-19).
+    min_slice_rows: PositiveInt = 1
     min_test_rows: PositiveInt
 
 

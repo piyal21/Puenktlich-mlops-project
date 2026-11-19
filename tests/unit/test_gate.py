@@ -1,9 +1,10 @@
 from datetime import UTC, date, datetime
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-from dbdelay.training.config import GateConfig
+from dbdelay.training.config import GateConfig, load_training_config
 from dbdelay.training.evaluate import Metrics, SplitReport, TrainingReport
 from dbdelay.training.gate import GateDecision, evaluate_gate
 
@@ -116,3 +117,22 @@ def test_missing_overall_metric_fails_closed() -> None:
 def test_champion_pair_must_be_complete() -> None:
     with pytest.raises(ValidationError, match="come together"):
         TrainingReport.model_validate(report(GOOD, BASE).model_dump() | {"champion_version": "1"})
+
+
+def test_small_slices_are_not_judged() -> None:
+    # Owner (2026-11-19): judge only train types with >= min_slice_rows test trains; a 797-row
+    # slice (NBE, AUC ~0.5 for both models) blocked a model that improved every large type.
+    worse_ice = split(0.1400, 0.80, {"ICE": 0.67, "RE": 0.78})
+    gate = GATE.model_copy(update={"min_slice_rows": 501})
+    decision = evaluate_gate(report(worse_ice, BASE), gate)
+    assert decision.passed
+    assert "too small: ICE, RE" in decision.checks[-1].detail
+    assert evaluate_gate(
+        report(worse_ice, BASE), GATE.model_copy(update={"min_slice_rows": 500})
+    ).failed == ["slice_auc"]
+
+
+def test_repo_gate_judges_slices_from_2000_rows() -> None:
+    cfg = load_training_config(Path(__file__).resolve().parents[2] / "configs" / "training.yaml")
+    assert cfg.gate.min_slice_rows == 2000
+    assert cfg.gate.max_slice_auc_drop == 0.02
