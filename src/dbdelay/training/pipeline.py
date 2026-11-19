@@ -497,6 +497,11 @@ def smoke_test(ctx: PipelineContext, snapshot_id: str, run_id: str, version: str
     ctx.tracker.finish_run(run_id)
 
 
+def _run_kind(request_id: str) -> str:
+    """Reason shown for a run without a retrain flag: the monthly schedule or a manual start."""
+    return "scheduled" if request_id.startswith("scheduled-") else "manual"
+
+
 def record_decision(
     ctx: PipelineContext, request_id: str, run_id: str, version: str, now: datetime
 ) -> RetrainRecord:
@@ -511,7 +516,7 @@ def record_decision(
     pointer = ObjectStorePointer(ctx.model_store, ctx.root).get()
     record = RetrainRecord(
         request_id=request_id,
-        reason=request.reason if request else "scheduled",
+        reason=request.reason if request else _run_kind(request_id),
         forced=request.forced if request else False,
         requested_at=request.requested_at if request else now,
         decided_at=now,

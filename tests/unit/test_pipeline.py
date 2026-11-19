@@ -223,3 +223,12 @@ def test_record_decision_released_and_rejected(signal_store: ObjectStore, tmp_pa
     assert (rejected.champion_before, rejected.champion_after) == ("1", "1")
     assert rejected.reason == "scheduled"
     assert not rejected.forced
+
+
+def test_record_decision_manual_run_reason(signal_store: ObjectStore, tmp_path: Path) -> None:
+    tracker = FakeTracker()
+    first = run_training_pipeline(_ctx(signal_store, tracker, tmp_path / "a"))
+    now = datetime(2026, 11, 19, 13, 0, tzinfo=UTC)
+    ctx = _ctx(signal_store, tracker, tmp_path / "c")
+    record = pipeline.record_decision(ctx, "manual-relaxed-gate", first.run_id, first.version, now)
+    assert record.reason == "manual"
