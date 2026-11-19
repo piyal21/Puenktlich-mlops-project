@@ -46,7 +46,7 @@ export function MonitoringStatus({
         <Icon aria-hidden="true" className="size-4" />
         {look.label}
       </span>
-      <div className="min-w-0 flex-1 text-sm">
+      <div className="min-w-0 basis-full text-sm sm:basis-0 sm:flex-1">
         <p>
           Last checked day <strong>{formatDate(newest.day)}</strong> · model v{newest.model_version}{" "}
           · {newest.rows.toLocaleString("en-GB")} trains with a known outcome
