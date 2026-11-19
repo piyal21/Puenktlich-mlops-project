@@ -2,7 +2,7 @@
 
 import hashlib
 from collections.abc import Sequence
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import TYPE_CHECKING, Literal
 
 import pandas as pd
@@ -85,16 +85,15 @@ class QualityReport(BaseModel):
 
 
 def _station_quality(
-    silver: pd.DataFrame, month: str, station_evas: Sequence[str]
+    silver: pd.DataFrame, days: Sequence[date], station_evas: Sequence[str]
 ) -> list[StationQuality]:
     if silver.empty:
         return [StationQuality(eva=eva, rows=0, volume_drop_days=[]) for eva in station_evas]
-    days = month_days(month)
     daily = (
         silver.groupby(["eva", silver["planned_departure_utc"].dt.date])
         .size()
         .unstack(fill_value=0)
-        .reindex(index=list(station_evas), columns=days, fill_value=0)
+        .reindex(index=list(station_evas), columns=list(days), fill_value=0)
     )
     result = []
     for eva, counts in daily.iterrows():
@@ -110,10 +109,9 @@ def _station_quality(
     return result
 
 
-def _low_volume_hours(silver: pd.DataFrame, month: str) -> list[str]:
+def _low_volume_hours(silver: pd.DataFrame, days: Sequence[date]) -> list[str]:
     if silver.empty:
         return []
-    days = month_days(month)
     hours = pd.date_range(
         pd.Timestamp(days[0]).tz_localize(_BERLIN),
         pd.Timestamp(days[-1]).tz_localize(_BERLIN) + timedelta(hours=23),
@@ -125,6 +123,17 @@ def _low_volume_hours(silver: pd.DataFrame, month: str) -> list[str]:
     median_by_hour = counts.groupby(counts.index.hour).transform("median")
     low = counts[(median_by_hour > 0) & (counts < LOW_HOUR_RATIO * median_by_hour)]
     return [f"{ts:%Y-%m-%dT%H}" for ts in low.index]
+
+
+def gap_fields_for_days(
+    silver: pd.DataFrame, days: Sequence[date], station_evas: Sequence[str]
+) -> tuple[list[str], list[StationQuality]]:
+    """Low-volume hours and per-station drop days over ``days`` (medians over those days).
+
+    The monthly report uses the same rules over all days of its month; this serves partial
+    months, e.g. days rebuilt from HF raw before HF publishes the month (Phase 9).
+    """
+    return _low_volume_hours(silver, days), _station_quality(silver, days, station_evas)
 
 
 def content_hash(df: pd.DataFrame) -> str:
@@ -159,8 +168,8 @@ def build_report(
         null_rates={c: float(silver[c].isna().mean()) if has_rows else 0.0 for c in silver.columns},
         late_rate=float(labelled.astype(bool).mean()) if len(labelled) else None,
         cancelled_rate=float(silver["is_cancelled"].mean()) if has_rows else None,
-        stations=_station_quality(silver, month, station_evas),
-        low_volume_hours=_low_volume_hours(silver, month),
+        stations=_station_quality(silver, month_days(month), station_evas),
+        low_volume_hours=_low_volume_hours(silver, month_days(month)),
         edge_complete=edge_complete,
         content_hash=content_hash(silver),
     )
