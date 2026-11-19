@@ -197,13 +197,13 @@ blinker==1.9.0 \
     --hash=sha256:b4ce2265a7abece45e7cc896e98dbebe6cead56bcf805a3d23136d145f5445bf \
     --hash=sha256:ba0efaa9080b619ff2f3459d1d500c57bddea4a6b424b60a91141db6fd2f08bc
     # via flask
-boto3==1.43.101 \
-    --hash=sha256:49f3eb750f70e050df9929a7e9392e67896c97d7d0a448f13ed3354c634268bd \
-    --hash=sha256:8a899b0ea94df3f2fab6d0c69caf2791f2971449696834374d8e88ced01c7ef3
-    # via -r docker/mlflow/requirements.in
-botocore==1.43.127 \
-    --hash=sha256:93bae360fb3a6f1b8e36593faa8bbbfa05b19866f7a37e9606a98f13394156f8 \
-    --hash=sha256:aa0e3188679a2164a2098a14ea9b59520520cb573aaee9999d852480691e134a
+boto3==1.44.3 \
+    --hash=sha256:8c9c4844c7ce184494b102983696d6cdb09f5307ec7f238ca4ad5849fb14e26b \
+    --hash=sha256:bba566b5cba78db05c5f6c44d219c8f6fb2cd2b923106f767289e4cd0b87b093
+    # via -r requirements.in
+botocore==1.44.6 \
+    --hash=sha256:757c7f33d006e8a3c873e1fed71611baaaa2ee4d72e6f830ec0423d02ec5de2d \
+    --hash=sha256:9deb4d9479d63aabf8fbd9169800821c1f47be77352d8b9b3d020de9a824794a
     # via
     #   boto3
     #   s3transfer
@@ -1301,7 +1301,7 @@ matplotlib==3.11.2 \
 mlflow==3.16.1 \
     --hash=sha256:044bd17d49ed216d3e38a537436622154daa5197ea41c1f3dedf155cbd8f40c0 \
     --hash=sha256:e4dfe69ceae31dfc7b8480e76ffe6a7f36752bdfac30e058e6430ade1fb5920b
-    # via -r docker/mlflow/requirements.in
+    # via -r requirements.in
 mlflow-skinny==3.16.1 \
     --hash=sha256:41ec1697710b91d001f8951bdc2d00391a277065ed82268c81706238fa2b918e \
     --hash=sha256:7298b47942b1b0e826e02191653b8c203c3bb242fb699f8beec98e928dbec115
@@ -1950,7 +1950,7 @@ psycopg2-binary==2.9.13 \
     --hash=sha256:f4cdfe41149dcc5583a3b7a2f0ad433f75bb3afd1c7a7332e63df89b05e34666 \
     --hash=sha256:f818161d2302b3b3e9c75d5a1d0a5c5679e92e45cfec6432b9d5432dde5ff1f1 \
     --hash=sha256:feb7b1856f6ca805cc0e08739858f6cdfed8ce903390126af30343c62899a389
-    # via -r docker/mlflow/requirements.in
+    # via -r requirements.in
 pyarrow==25.0.1 \
     --hash=sha256:0b1edbb2f385a6a65e9711b62ba86ac54a7816a3f8d17bb3e8a5929d65fb2485 \
     --hash=sha256:0b726ad7e7b669be982b0c71c07fe4b037d654354130da79a7902a669e93a66b \
