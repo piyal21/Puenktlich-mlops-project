@@ -8,6 +8,7 @@ locals {
   targets = compact([
     var.ingest_function_arn,
     var.etl_function_arn,
+    var.monitor_function_arn,
     local.sample_on ? var.sample_board_function_arn : "",
   ])
 }
@@ -104,6 +105,26 @@ resource "aws_scheduler_schedule" "etl_daily" {
 
     retry_policy {
       maximum_retry_attempts = 1 # idempotent: re-running a day overwrites it
+    }
+  }
+}
+
+# Phase 9: daily monitor, after the ETL has written yesterday's live silver (~4 min at 03:30).
+resource "aws_scheduler_schedule" "monitor" {
+  name                         = "puenktlich-monitor"
+  schedule_expression          = var.monitor_cron
+  schedule_expression_timezone = "Europe/Berlin"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = var.monitor_function_arn
+    role_arn = aws_iam_role.scheduler.arn
+
+    retry_policy {
+      maximum_retry_attempts = 1 # idempotent: re-running a day replaces its results
     }
   }
 }

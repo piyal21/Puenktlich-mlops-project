@@ -138,3 +138,61 @@ resource "aws_cloudwatch_metric_alarm" "empty_stations" {
   alarm_actions       = [aws_sns_topic.alerts.arn]
   ok_actions          = [aws_sns_topic.alerts.arn]
 }
+
+# --- Phase 9: daily monitor (EMF metrics in namespace Puenktlich, service = monitor) ---------
+# Thresholds mirror configs/monitoring.yaml (drift_share_max 0.30, brier_ratio_max 1.10, 3 days).
+
+resource "aws_cloudwatch_metric_alarm" "monitor_missing" {
+  count             = var.enable_alarms ? 1 : 0
+  alarm_name        = "puenktlich-monitor-missing"
+  alarm_description = "No daily monitor result for 26 h (monitor failed or did not run)."
+  namespace         = "Puenktlich"
+  metric_name       = "LabeledEvents"
+  dimensions        = { service = "monitor" }
+  statistic         = "SampleCount"
+  # 26 hourly buckets: the alarm fires only when every one of them has no datapoint.
+  period              = 3600
+  evaluation_periods  = 26
+  datapoints_to_alarm = 26
+  threshold           = 1
+  comparison_operator = "LessThanThreshold"
+  treat_missing_data  = "breaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  ok_actions          = [aws_sns_topic.alerts.arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "drift" {
+  count               = var.enable_alarms ? 1 : 0
+  alarm_name          = "puenktlich-drift"
+  alarm_description   = "Share of drifted model inputs above 0.30 on 3 days in a row (retrain requested)."
+  namespace           = "Puenktlich"
+  metric_name         = "DriftShare"
+  dimensions          = { service = "monitor" }
+  statistic           = "Maximum"
+  period              = 86400
+  evaluation_periods  = 3
+  datapoints_to_alarm = 3
+  threshold           = 0.30
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  ok_actions          = [aws_sns_topic.alerts.arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "performance" {
+  count               = var.enable_alarms ? 1 : 0
+  alarm_name          = "puenktlich-performance"
+  alarm_description   = "Daily Brier score above 1.10 x the champion's test Brier on 3 days in a row."
+  namespace           = "Puenktlich"
+  metric_name         = "BrierRatio"
+  dimensions          = { service = "monitor" }
+  statistic           = "Maximum"
+  period              = 86400
+  evaluation_periods  = 3
+  datapoints_to_alarm = 3
+  threshold           = 1.10
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  ok_actions          = [aws_sns_topic.alerts.arn]
+}
