@@ -70,3 +70,78 @@ export interface Problem {
   instance: string;
   request_id: string;
 }
+
+// Phase 9: GET /api/v1/monitoring (dbdelay.serving.monitoring.MonitoringView).
+export type DayStatus = "ok" | "no_data" | "too_few_rows";
+export interface Verdict {
+  drift_bad: boolean;
+  performance_bad: boolean;
+  drift_share_max: number;
+  brier_ratio_max: number;
+}
+export interface HistoryEntry {
+  day: string;
+  status: DayStatus;
+  model_version: string;
+  rows: number;
+  brier: number | null;
+  roc_auc: number | null;
+  ece: number | null;
+  late_rate: number | null;
+  mean_p_late: number | null;
+  brier_ratio: number | null;
+  drift_share: number | null;
+  prediction_drift: number | null;
+  verdict: Verdict;
+}
+export interface ColumnDrift {
+  column: string;
+  method: "wasserstein_normed" | "jensen_shannon";
+  score: number;
+  drifted: boolean;
+  counted: boolean;
+}
+export interface DailyResult {
+  day: string;
+  status: DayStatus;
+  model_version: string;
+  champion_test_brier: number;
+  performance: {
+    rows: number;
+    late_rate: number | null;
+    mean_p_late: number | null;
+    brier: number | null;
+    log_loss: number | null;
+    roc_auc: number | null;
+    ece: number | null;
+  };
+  brier_ratio: number | null;
+  drift: {
+    columns: ColumnDrift[];
+    drift_share: number;
+    prediction: ColumnDrift;
+    reference_rows: number;
+    current_rows: number;
+    day_type: "weekday" | "weekend_or_holiday";
+  } | null;
+  verdict: Verdict;
+  excluded_rows: Record<string, number>;
+  computed_at: string;
+}
+export interface RetrainRecord {
+  request_id: string;
+  reason: string;
+  forced: boolean;
+  requested_at: string;
+  decided_at: string;
+  decision: "released" | "rejected" | "failed";
+  challenger_version: string | null;
+  champion_before: string | null;
+  champion_after: string | null;
+  failed_checks: string[];
+}
+export interface Monitoring {
+  latest: DailyResult | null;
+  history: HistoryEntry[];
+  retrains: RetrainRecord[];
+}

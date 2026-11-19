@@ -3,8 +3,14 @@ import { ApiError } from "../api/client";
 import type { ModelInfo } from "../api/types";
 import { Banner } from "../components/Banner";
 import { MetricCard } from "../components/MetricCard";
+import { DailyCharts } from "../components/health/DailyCharts";
+import { DriftTable } from "../components/health/DriftTable";
+import { MonitoringStatus } from "../components/health/MonitoringStatus";
+import { RetrainLog } from "../components/health/RetrainLog";
 import { useModel } from "../hooks/useModel";
+import { useMonitoring } from "../hooks/useMonitoring";
 import { formatDate } from "../lib/format";
+import { healthState } from "../lib/monitoring";
 
 const num = (value: number | null, digits = 3) => (value === null ? "—" : value.toFixed(digits));
 
@@ -34,6 +40,70 @@ function ModelCards({ model }: { model: ModelInfo }) {
         value={`${formatDate(model.train_window.start)} – ${formatDate(model.train_window.end)}`}
         caption={`Snapshot ${model.data_snapshot_id}`}
       />
+    </div>
+  );
+}
+
+function DailyMonitoring({
+  testBrier,
+  testAuc,
+}: {
+  testBrier: number | null;
+  testAuc: number | null;
+}) {
+  const monitoring = useMonitoring();
+  if (monitoring.isPending) {
+    return <div aria-busy="true" className="h-24 animate-pulse rounded-lg bg-surface-2" />;
+  }
+  if (monitoring.isError) {
+    return (
+      <Banner
+        variant="error"
+        action={
+          <button
+            type="button"
+            onClick={() => void monitoring.refetch()}
+            className="min-h-11 rounded-md border border-border bg-surface px-4 text-sm font-medium"
+          >
+            Try again
+          </button>
+        }
+      >
+        Couldn&apos;t load daily monitoring.
+      </Banner>
+    );
+  }
+  const data = monitoring.data;
+  const state = healthState(data, new Date().toISOString().slice(0, 10));
+  if (state === "none") {
+    return (
+      <div className="flex items-start gap-3 rounded-lg border border-border bg-surface p-4">
+        <Activity aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-muted" />
+        <div className="text-muted">
+          <p>Daily monitoring starts after the first nightly check.</p>
+          <p>
+            Every morning the model is scored on all of yesterday&apos;s departures with their real
+            outcomes.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  const championBrier = data.latest?.champion_test_brier ?? testBrier;
+  return (
+    <div className="space-y-4">
+      <MonitoringStatus monitoring={data} state={state} />
+      <DailyCharts history={data.history} championBrier={championBrier} testAuc={testAuc} />
+      {data.latest?.drift ? (
+        <div className="space-y-2">
+          <h3 className="text-base font-semibold">Data drift on the last checked day</h3>
+          <DriftTable drift={data.latest.drift} />
+        </div>
+      ) : null}
+      <div className="space-y-2">
+        <h3 className="text-base font-semibold">Retraining</h3>
+        <RetrainLog retrains={data.retrains} />
+      </div>
     </div>
   );
 }
@@ -81,13 +151,10 @@ export function HealthPage() {
         <h2 id="monitoring" className="text-xl font-semibold">
           Daily monitoring
         </h2>
-        <div className="flex items-start gap-3 rounded-lg border border-border bg-surface p-4">
-          <Activity aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-muted" />
-          <p className="text-muted">
-            Daily monitoring starts in a later phase: yesterday&apos;s accuracy and data drift will
-            appear here. Until then, the numbers above come from the model&apos;s test period.
-          </p>
-        </div>
+        <DailyMonitoring
+          testBrier={model.data?.metrics.test_brier ?? null}
+          testAuc={model.data?.metrics.test_auc ?? null}
+        />
       </section>
     </div>
   );

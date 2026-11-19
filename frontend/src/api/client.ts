@@ -1,4 +1,4 @@
-import type { DeparturesResponse, ModelInfo, Problem, Station } from "./types";
+import type { DeparturesResponse, ModelInfo, Monitoring, Problem, Station } from "./types";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -34,4 +34,5 @@ export const api = {
       signal,
     ),
   model: (signal?: AbortSignal) => getJson<ModelInfo>("/api/v1/model", signal),
+  monitoring: (signal?: AbortSignal) => getJson<Monitoring>("/api/v1/monitoring", signal),
 };
