@@ -12,6 +12,7 @@ from dbdelay.data.stations import load_stations
 from dbdelay.registry.pointer import ObjectStorePointer
 from dbdelay.serving.board import BOARD_KEY, BoardSource
 from dbdelay.serving.model_loader import ModelProvider
+from dbdelay.serving.monitoring import MonitoringSource
 from dbdelay.serving.seed import seed_board
 from dbdelay.storage import ObjectStore, make_s3_client
 
@@ -39,6 +40,7 @@ def test_seed_then_serve_real_champion(scratch: tuple[ObjectStore, str]) -> None
         stations=tuple(load_stations(REPO / "configs" / "stations.yaml")),
         models=ModelProvider(models, ObjectStorePointer(models)),
         board=BoardSource(store, root + BOARD_KEY),
+        monitoring=MonitoringSource(store),
         clock=lambda: now,
     )
     api = TestClient(create_app(deps))

@@ -15,6 +15,7 @@ from dbdelay.registry.artifacts import write_bundle
 from dbdelay.registry.pointer import ObjectStorePointer
 from dbdelay.serving.board import BOARD_KEY, BoardSource, LiveBoard, board_to_bytes
 from dbdelay.serving.model_loader import ModelProvider
+from dbdelay.serving.monitoring import MonitoringSource
 from dbdelay.storage import ObjectStore
 from tests.boards import NOW
 from tests.bundles import bundle_manifest
@@ -42,6 +43,7 @@ def make_deps(
         stations=STATIONS,
         models=ModelProvider(store, ObjectStorePointer(store)),
         board=BoardSource(store),
+        monitoring=MonitoringSource(store),
         clock=lambda: now,
     )
 

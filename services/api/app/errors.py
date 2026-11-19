@@ -11,7 +11,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from dbdelay.errors import ExternalServiceError, ModelNotAvailableError, NotFoundError
+from dbdelay.errors import (
+    ExternalServiceError,
+    ModelNotAvailableError,
+    MonitoringUnavailableError,
+    NotFoundError,
+)
 from dbdelay.logging import get_logger
 
 PROBLEM_JSON = "application/problem+json"
@@ -37,6 +42,9 @@ MODEL_UNAVAILABLE = ProblemKind(
 )
 BOARD_UNAVAILABLE = ProblemKind(
     "/errors/board-unavailable", "Live data is temporarily unavailable", 503
+)
+MONITORING_UNAVAILABLE = ProblemKind(
+    "/errors/monitoring-unavailable", "Monitoring results are temporarily unavailable", 503
 )
 INTERNAL = ProblemKind("/errors/internal", "Internal error", 500)
 
@@ -119,6 +127,15 @@ def install_error_handlers(app: FastAPI) -> None:
             "Live departures could not be loaded. Try again in a minute.",
         )
 
+    async def no_monitoring(request: Request, exc: Exception) -> Response:
+        get_logger("api").warning(
+            "monitoring unavailable",
+            extra={"request_id": request_id_of(request), "error": str(exc)},
+        )
+        return problem(
+            request, MONITORING_UNAVAILABLE, "Monitoring results could not be loaded right now."
+        )
+
     async def http_error(request: Request, exc: Exception) -> Response:
         if not isinstance(exc, StarletteHTTPException):  # registered for this type only
             raise exc
@@ -133,5 +150,6 @@ def install_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(RequestValidationError, invalid)
     app.add_exception_handler(ModelNotAvailableError, no_model)
     app.add_exception_handler(ExternalServiceError, no_board)
+    app.add_exception_handler(MonitoringUnavailableError, no_monitoring)
     app.add_exception_handler(StarletteHTTPException, http_error)
     app.add_exception_handler(Exception, unexpected)
