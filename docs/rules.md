@@ -53,7 +53,7 @@
 | DL (stretch only) | PyTorch → ONNX, served with onnxruntime | TensorFlow, serving PyTorch directly in Lambda |
 | Tracking/registry | MLflow 3 | W&B, Neptune |
 | Orchestration | Airflow 3 TaskFlow API (`from airflow.sdk import dag, task`) | Airflow 2 imports (`airflow.decorators`, `airflow.models.DAG`), Prefect, Dagster |
-| Drift | Evidently ≥ 0.7 API (`from evidently import Report`) | Legacy `evidently.report` / `evidently.metric_preset` imports |
+| Drift | Evidently's default tests computed with scipy (`dbdelay.monitoring.drift`; ADR 0003: Evidently does not fit the 512 MB API-image Lambda) | Evidently in a Lambda image; hand-rolled statistics that differ from Evidently's defaults |
 | API | FastAPI + Mangum | Flask, Django |
 | HTTP | httpx (with timeouts) + tenacity | requests without timeouts |
 | XML | `defusedxml.ElementTree` | `xml.etree`, `lxml` on untrusted input |

@@ -117,6 +117,7 @@ For the portfolio, the problem is a vehicle: it naturally needs **real ETL, larg
 | GET | `/api/v1/stations/{eva}/departures?hours=3` | Live board with predictions |
 | POST | `/api/v1/predict` | Score one departure (for developers) |
 | GET | `/api/v1/model` | Current champion metadata (version, trained_at, metrics) |
+| GET | `/api/v1/monitoring` | Daily monitoring: newest day in full, history, retrain decisions (Phase 9) |
 
 Errors use `application/problem+json` (RFC 9457). Details in `architecture.md`.
 Phase 7 (additive): each board departure's `train.via` lists the stations after this one, so "Going to"
@@ -156,7 +157,7 @@ matches any stop on the way (empty for sample data).
 | Registry | MLflow registered model with `@champion` / `@challenger` aliases |
 | Release | Champion exported to S3 with `manifest.json` + checksums; SSM parameter points to the live version |
 | Rollback | Set the SSM pointer to the previous version (`make rollback`) — no code deploy |
-| Monitoring | Evidently reports daily; metrics to CloudWatch + public JSON |
+| Monitoring | Daily performance + drift (Evidently's default tests via scipy, ADR 0003); metrics to CloudWatch, results via `/api/v1/monitoring` |
 | Retraining triggers | Drift share > threshold for 3 consecutive days, or Brier worse than champion's test Brier by > 10 %, or monthly schedule |
 | CI/CD | GitHub Actions with OIDC, required checks on PRs, deploy on `main` |
 | IaC | Terraform ≥ 1.10, S3 remote state with native locking |
