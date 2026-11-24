@@ -3,21 +3,24 @@
 Event `{}` = yesterday (UTC). Manual runs may pass `{"day": "YYYY-MM-DD"}` (backfill, idempotent)
 and `{"threshold_overrides": {...}}` (forced demo; never changes stored verdicts). Emits the
 EMF metrics `LabeledEvents` (always) and `BrierDaily`, `AUCDaily`, `BrierRatio`, `DriftShare`
-(only for `ok` days, so alarms never see numbers from days that do not count).
+(only for `ok` days), plus `RetrainRequested` per `reason` (drift, performance) on every run:
+1 when this run wrote a new retrain flag for that reason, else 0. The drift and performance alarms
+watch `RetrainRequested`, so an alarm email means exactly "retrain requested" (alarm = trigger;
+the earlier rolling-window alarms on `DriftShare`/`BrierRatio` fired falsely on 21 + 22 Nov 2026).
 """
 
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from aws_lambda_powertools import Metrics
-from aws_lambda_powertools.metrics import MetricUnit
+from aws_lambda_powertools.metrics import MetricUnit, single_metric
 from pydantic import BaseModel, ConfigDict
 
 from dbdelay.config import get_settings
 from dbdelay.logging import get_logger
 from dbdelay.monitoring.config import load_monitoring_config
 from dbdelay.monitoring.job import MonitorOutcome, run_monitor
-from dbdelay.monitoring.triggers import ThresholdOverrides
+from dbdelay.monitoring.triggers import Reason, ThresholdOverrides
 from dbdelay.registry.pointer import make_pointer
 from dbdelay.storage import ObjectStore, make_s3_client
 
@@ -44,6 +47,17 @@ def _emit(outcome: MonitorOutcome) -> None:
             if value is not None:
                 metrics.add_metric(name=name, unit=MetricUnit.NoUnit, value=value)
     metrics.flush_metrics()
+    flag = outcome.flag_written
+    reasons: tuple[Reason, ...] = ("drift", "performance")
+    for reason in reasons:
+        with single_metric(
+            name="RetrainRequested",
+            unit=MetricUnit.Count,
+            value=1 if flag is not None and flag.reason == reason else 0,
+            namespace="Puenktlich",
+            default_dimensions={"service": "monitor"},
+        ) as retrain:
+            retrain.add_dimension(name="reason", value=reason)
 
 
 def _payload(event: dict[str, Any] | None) -> dict[str, Any]:
