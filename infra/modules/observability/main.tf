@@ -161,38 +161,38 @@ resource "aws_cloudwatch_metric_alarm" "monitor_missing" {
   ok_actions          = [aws_sns_topic.alerts.arn]
 }
 
+# Drift / performance: alarm = retrain trigger. The monitor emits RetrainRequested{reason} = 1
+# only when it writes control/retrain_requested.json (3 calendar days in a row, same model, no
+# open request). Rolling 24 h windows on DriftShare/BrierRatio could not express that and fired
+# falsely on 21 + 22 Nov 2026. No OK email: "OK" only means the hour passed.
 resource "aws_cloudwatch_metric_alarm" "drift" {
   count               = var.enable_alarms ? 1 : 0
   alarm_name          = "puenktlich-drift"
-  alarm_description   = "Share of drifted model inputs above 0.30 on 3 days in a row (retrain requested)."
+  alarm_description   = "Retrain requested (reason drift): share of drifted model inputs above 0.30 on 3 days in a row, same model."
   namespace           = "Puenktlich"
-  metric_name         = "DriftShare"
-  dimensions          = { service = "monitor" }
-  statistic           = "Maximum"
-  period              = 86400
-  evaluation_periods  = 3
-  datapoints_to_alarm = 3
-  threshold           = 0.30
-  comparison_operator = "GreaterThanThreshold"
+  metric_name         = "RetrainRequested"
+  dimensions          = { service = "monitor", reason = "drift" }
+  statistic           = "Sum"
+  period              = 3600
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
   treat_missing_data  = "notBreaching"
   alarm_actions       = [aws_sns_topic.alerts.arn]
-  ok_actions          = [aws_sns_topic.alerts.arn]
 }
 
 resource "aws_cloudwatch_metric_alarm" "performance" {
   count               = var.enable_alarms ? 1 : 0
   alarm_name          = "puenktlich-performance"
-  alarm_description   = "Daily Brier score above 1.10 x the champion's test Brier on 3 days in a row."
+  alarm_description   = "Retrain requested (reason performance): daily Brier above 1.10 x the champion's test Brier on 3 days in a row, same model."
   namespace           = "Puenktlich"
-  metric_name         = "BrierRatio"
-  dimensions          = { service = "monitor" }
-  statistic           = "Maximum"
-  period              = 86400
-  evaluation_periods  = 3
-  datapoints_to_alarm = 3
-  threshold           = 1.10
-  comparison_operator = "GreaterThanThreshold"
+  metric_name         = "RetrainRequested"
+  dimensions          = { service = "monitor", reason = "performance" }
+  statistic           = "Sum"
+  period              = 3600
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
   treat_missing_data  = "notBreaching"
   alarm_actions       = [aws_sns_topic.alerts.arn]
-  ok_actions          = [aws_sns_topic.alerts.arn]
 }

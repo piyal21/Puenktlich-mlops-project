@@ -68,19 +68,27 @@ make smoke-prod-live                              # the public site end to end
 - **Fix:** after fixing the cause, re-run the missed days (idempotent):
   `aws lambda invoke --function-name puenktlich-monitor --payload '{"day":"YYYY-MM-DD"}' --cli-binary-format raw-in-base64-out out.json …`
 
-## puenktlich-drift — drifted share of model inputs above 0.30 on 3 days in a row
+## puenktlich-drift — retrain requested (reason drift)
 
-- **Meaning:** the trains the model sees differ from its training data (new lines, timetable change,
-  a station renamed). The monitor has written `control/retrain_requested.json` (reason `drift`).
+- **Meaning:** the monitor has just written `control/retrain_requested.json` with reason `drift`:
+  drifted share of model inputs above 0.30 on 3 calendar days in a row, same model, no open request.
+  The trains the model sees differ from its training data (new lines, timetable change, a station
+  renamed). The alarm watches `RetrainRequested{reason=drift}`, so email = flag. There is no
+  "back to OK" email (the alarm returns to OK after an hour on its own).
+- **History:** until Phase 10 this alarm used rolling 24 h windows on `DriftShare`; manual backfill
+  runs on 19 Nov 2026 made it fire falsely on 21 + 22 Nov without any retrain request.
 - **First checks:** health page → "Data drift on the last checked day" (which inputs, which scores);
   timetable change dates (mid-December); `excluded_rows` and gap flags (a feed problem looks like drift).
 - **Fix:** run the retrain loop: `make retrain-sync` → Airflow `drift_watch` picks it up within 30 min
   (`make airflow-up`, keep the laptop awake) → `make retrain-publish`. A rejected challenger keeps the
   current model; that is a valid outcome and shows on the health page.
 
-## puenktlich-performance — daily Brier above 1.10 × the champion's test Brier on 3 days in a row
+## puenktlich-performance — retrain requested (reason performance)
 
-- **Meaning:** predictions are worse on real outcomes than in the test period. Known cause (Phase 7):
+- **Meaning:** the monitor has just written a retrain flag with reason `performance`: daily Brier
+  above 1.10 × the champion's test Brier on 3 calendar days in a row, same model (alarm on
+  `RetrainRequested{reason=performance}`, ALARM email only). Predictions are worse on real
+  outcomes than in the test period. Known cause (Phase 7):
   HF history probably undercounts lateness, so a model trained on it underestimates live late rates —
   compare "actual vs predicted late rate" on the health page.
 - **First checks:** health page charts (is it calibration — predicted below actual — or ranking — AUC down?);
