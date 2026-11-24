@@ -1,7 +1,7 @@
 # Runbook — alarms
 
 Every alarm sends an email from the SNS topic `puenktlich-alerts` (and a second email when it returns
-to OK). Region `eu-north-1`. All commands run on the laptop after `aws login --profile puenktlich`.
+to OK — except *drift* and *performance*, which email only "retrain requested"). Region `eu-north-1`. All commands run on the laptop after `aws login --profile puenktlich`.
 
 Useful everywhere:
 
@@ -74,7 +74,9 @@ make smoke-prod-live                              # the public site end to end
   drifted share of model inputs above 0.30 on 3 calendar days in a row, same model, no open request.
   The trains the model sees differ from its training data (new lines, timetable change, a station
   renamed). The alarm watches `RetrainRequested{reason=drift}`, so email = flag. There is no
-  "back to OK" email (the alarm returns to OK after an hour on its own).
+  "back to OK" email; the alarm returns to OK on its own, at the latest after the next nightly monitor
+  run (CloudWatch keeps the last datapoint while newer ones are missing). A second flag during that
+  time sends no email, so the source of truth is `control/retrain_requested.json` / the health page.
 - **History:** until Phase 10 this alarm used rolling 24 h windows on `DriftShare`; manual backfill
   runs on 19 Nov 2026 made it fire falsely on 21 + 22 Nov without any retrain request.
 - **First checks:** health page → "Data drift on the last checked day" (which inputs, which scores);
