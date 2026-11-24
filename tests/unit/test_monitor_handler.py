@@ -12,7 +12,7 @@ from dbdelay.monitoring.drift import ColumnDrift, DriftResult
 from dbdelay.monitoring.history import DailyResult, DayStatus, Verdict
 from dbdelay.monitoring.job import MonitorOutcome
 from dbdelay.monitoring.performance import PerformanceMetrics
-from dbdelay.monitoring.triggers import ThresholdOverrides
+from dbdelay.monitoring.triggers import Reason, RetrainRequest, ThresholdOverrides
 from tests.unit.conftest import TEST_BUCKET
 
 REPO = Path(__file__).resolve().parents[2]
@@ -26,7 +26,7 @@ def _env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MONITORING_CONFIG_FILE", str(REPO / "configs" / "monitoring.yaml"))
 
 
-def _outcome(day: date, status: DayStatus) -> MonitorOutcome:
+def _outcome(day: date, status: DayStatus, flag: RetrainRequest | None = None) -> MonitorOutcome:
     ok = status == "ok"
     col = ColumnDrift(
         column="p_late", method="wasserstein_normed", score=0.05, drifted=False, counted=False
@@ -57,26 +57,61 @@ def _outcome(day: date, status: DayStatus) -> MonitorOutcome:
             excluded_rows={},
             computed_at=datetime(2026, 11, 19, 3, 30, tzinfo=UTC),
         ),
-        flag_written=None,
+        flag_written=flag,
     )
 
 
-def _capture(monkeypatch: pytest.MonkeyPatch, status: DayStatus) -> list[dict[str, Any]]:
+def _capture(
+    monkeypatch: pytest.MonkeyPatch, status: DayStatus, flag: RetrainRequest | None = None
+) -> list[dict[str, Any]]:
     calls: list[dict[str, Any]] = []
 
     def fake(**kw: Any) -> MonitorOutcome:
         calls.append(kw)
-        return _outcome(kw["day"], status)
+        return _outcome(kw["day"], status, flag)
 
     monkeypatch.setattr(monitor_handler, "run_monitor", fake)
     return calls
 
 
-def _metrics(text: str) -> dict[str, Any]:
+def _emf(text: str) -> list[dict[str, Any]]:
     lines = [json.loads(line) for line in text.splitlines() if line.startswith("{")]
-    (metric,) = [line for line in lines if "_aws" in line]
-    assert isinstance(metric, dict)
+    return [line for line in lines if isinstance(line, dict) and "_aws" in line]
+
+
+def _metrics(text: str) -> dict[str, Any]:
+    """The main EMF record (all daily metrics, dimension service only)."""
+    (metric,) = [line for line in _emf(text) if "LabeledEvents" in line]
     return metric
+
+
+def _retrain(text: str) -> dict[str, float]:
+    """`RetrainRequested` value per reason, checking namespace and dimensions."""
+    values: dict[str, float] = {}
+    for line in _emf(text):
+        if "RetrainRequested" not in line:
+            continue
+        spec = line["_aws"]["CloudWatchMetrics"][0]
+        assert spec["Namespace"] == "Puenktlich"
+        assert [sorted(d) for d in spec["Dimensions"]] == [["reason", "service"]]
+        assert line["service"] == "monitor"
+        (value,) = line["RetrainRequested"]
+        values[line["reason"]] = float(value)
+    return values
+
+
+def _flag(reason: Reason, *, forced: bool = False) -> RetrainRequest:
+    return RetrainRequest(
+        request_id=f"20261124T033000Z-{reason}",
+        state="requested",
+        reason=reason,
+        days=[date(2026, 11, 21), date(2026, 11, 22), date(2026, 11, 23)],
+        model_version="1",
+        metrics={},
+        forced=forced,
+        thresholds={"drift_share_max": 0.3, "brier_ratio_max": 1.1},
+        requested_at=datetime(2026, 11, 24, 3, 30, tzinfo=UTC),
+    )
 
 
 def test_default_day_is_yesterday(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -149,3 +184,43 @@ def test_scheduler_envelope_means_yesterday(monkeypatch: pytest.MonkeyPatch) -> 
     monitor_handler.handler(envelope, CTX)
     assert calls[0]["day"] == datetime.now(UTC).date() - timedelta(days=1)
     assert calls[0]["overrides"] is None
+
+
+# --- RetrainRequested: alarm = trigger (false drift alarms 21 + 22 Nov 2026) -----------------
+
+
+def test_retrain_requested_zero_without_flag(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _capture(monkeypatch, "ok")
+    monitor_handler.handler({"day": "2026-11-23"}, CTX)
+    out = capsys.readouterr().out
+    assert _retrain(out) == {"drift": 0.0, "performance": 0.0}
+    assert "RetrainRequested" not in _metrics(out)
+
+
+def test_retrain_requested_one_for_flag_reason(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _capture(monkeypatch, "ok", _flag("performance"))
+    result = monitor_handler.handler({"day": "2026-11-23"}, CTX)
+    assert result["flag"] == "20261124T033000Z-performance"
+    assert _retrain(capsys.readouterr().out) == {"drift": 0.0, "performance": 1.0}
+
+
+def test_retrain_requested_forced_flag_counts(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _capture(monkeypatch, "ok", _flag("drift", forced=True))
+    monitor_handler.handler(
+        {"day": "2026-11-23", "threshold_overrides": {"drift_share_max": 0}}, CTX
+    )
+    assert _retrain(capsys.readouterr().out) == {"drift": 1.0, "performance": 0.0}
+
+
+def test_retrain_requested_emitted_on_no_data(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _capture(monkeypatch, "no_data")
+    monitor_handler.handler({"day": "2026-11-23"}, CTX)
+    assert _retrain(capsys.readouterr().out) == {"drift": 0.0, "performance": 0.0}

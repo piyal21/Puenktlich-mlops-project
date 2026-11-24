@@ -116,6 +116,23 @@ def test_a_broken_response_fails_its_check(key: tuple[str, str], bad: Any, check
     assert failed == {check}
 
 
+@pytest.mark.parametrize("version", ["1", "7", "12"])
+def test_health_accepts_any_released_champion(version: str) -> None:
+    # v7 became champion on 2026-11-19; the check had "1" hard-coded and failed on the live site.
+    site = good_site() | {
+        ("GET", "/api/v1/health"): _json(200, {"status": "ok", "model_version": version})
+    }
+    assert smoke.health_reports_model(fetch_from(site), BASE) is None
+
+
+@pytest.mark.parametrize("version", ["", "v7", 7])
+def test_health_rejects_a_malformed_version(version: Any) -> None:
+    site = good_site() | {
+        ("GET", "/api/v1/health"): _json(200, {"status": "ok", "model_version": version})
+    }
+    assert smoke.health_reports_model(fetch_from(site), BASE) is not None
+
+
 def test_main_prints_one_line_per_check_and_exits_1_on_failure(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

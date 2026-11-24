@@ -457,7 +457,7 @@ Daily `monitor` Lambda (04:30 Berlin, after `etl_daily`; `api` image, 512 MB; Ph
 4. **Data drift:** Evidently's default tests computed with scipy (ADR 0003): Wasserstein distance normed by the reference std (numeric), Jensen–Shannon distance (categorical); drifted when ≥ 0.1. Reference = reference sample of the same day type (weekday vs weekend/holiday). `DriftShare` counts only the 7 content inputs; the 4 calendar inputs always differ on one day and are reported, not counted.
 5. **Prediction drift:** `p_late` vs the reference predictions (reported separately).
 6. Write `monitoring/daily/date=D.json` and upsert `monitoring/history.json` (re-runs replace the day).
-7. Emit CloudWatch metrics (namespace `Puenktlich`, `service=monitor`): `LabeledEvents` (always), `BrierDaily`, `AUCDaily`, `BrierRatio`, `DriftShare` (only for `ok` days).
+7. Emit CloudWatch metrics (namespace `Puenktlich`, `service=monitor`): `LabeledEvents` (always), `BrierDaily`, `AUCDaily`, `BrierRatio`, `DriftShare` (only for `ok` days), and after step 8 `RetrainRequested` (extra dimension `reason` = `drift` | `performance`; every run; 1 when this run wrote a new retrain flag for that reason, else 0 — Phase 10).
 8. Evaluate triggers (`configs/monitoring.yaml`): the last **3 consecutive days**, same model, all
    `DriftShare > 0.30` or all `BrierDaily > champion test_brier × 1.10` → write
    `control/retrain_requested.json` `{request_id, state: requested, reason, days, metrics, forced, thresholds}`
@@ -483,8 +483,8 @@ the champion to S3 + SSM).
 | API errors | API Gateway `5xx` > 5 in 5 min |
 | API throttling | Lambda `Throttles` > 0 |
 | Monitor missing | no `LabeledEvents` datapoint in 26 hourly periods (missing = breaching) — Phase 9 |
-| Drift | `DriftShare` > 0.30 on 3 consecutive days — Phase 9 |
-| Performance | `BrierRatio` > 1.10 on 3 consecutive days — Phase 9 |
+| Drift | `RetrainRequested{reason=drift}` sum ≥ 1 in 1 h, i.e. the monitor wrote a drift retrain flag (step 8); ALARM email only, no OK email — Phase 10 (was a rolling `DriftShare` window, fired falsely 21–22 Nov 2026) |
+| Performance | `RetrainRequested{reason=performance}` sum ≥ 1 in 1 h (same rule) — Phase 10 |
 | Budget | AWS Budgets: actual > $1 and forecast > $5 |
 
 Keep **≤ 10 custom metrics** and **≤ 10 alarms** (free-tier limits).

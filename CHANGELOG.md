@@ -3,6 +3,41 @@
 One entry per phase branch (owner rule, from Phase 2 on). Phases 0–1 are described in [`Phases/`](Phases/).
 Only measured numbers; anything not measured is `TBD`.
 
+## Phase 10 — Hardening & showcase (in progress)
+
+### `phase-10/retrain-alarm` — drift/performance alarms = retrain trigger
+
+**Built**
+- Monitor emits `RetrainRequested` (dimensions `service=monitor`, `reason=drift|performance`) on every run:
+  1 when the run wrote a new retrain flag for that reason, else 0.
+- Alarms `puenktlich-drift` / `puenktlich-performance` now watch it (Sum ≥ 1 in 1 h, ALARM email only).
+  Names unchanged; 9 alarms, 9 custom metrics (free tier 10/10).
+- Smoke check `health_reports_model` accepts any released champion (had `"1"` hard-coded; failed since v7).
+
+**Key decisions**
+- Why: `puenktlich-drift` fired falsely on 21 + 22 Nov 2026 (ALARM 05:04 → OK 19:04). Rolling 24 h `Maximum`
+  windows on `DriftShare` picked up the 19 Nov manual backfill datapoints; the trigger (3 calendar days, same model,
+  no open request) correctly requested nothing. Alarm windows cannot express that rule, so the alarm now follows the
+  trigger's own decision. Spec `docs/superpowers/specs/2026-11-24-retrain-requested-alarm-design.md`.
+- No OK email for these two ("OK" only means time passed). Forced demo flags alarm too (they are real flags).
+- `DriftShare` / `BrierRatio` stay as metrics without alarms.
+
+**Tested**
+- `make check`: 684 passed, coverage 96.16 %; smoke unit tests 22 passed; `uv run pre-commit run --all-files` clean.
+- `make tf-fmt`, `make tf-validate`, `make tf-scan`: exit 0.
+- AWS (2026-11-24): API image `7caa57c3a1ce`; `make tf-apply` 0 added, 5 changed, 0 destroyed. Manual monitor run →
+  `RetrainRequested` listed for both reasons; both alarms `OK` on the new rule, no OK actions; 0 alarms not OK;
+  `make smoke-prod-live` 11/11.
+
+**Known gaps / open items**
+- Verification run used 23 Nov before its ETL ran → `no_data` placeholder until the 03:30 UTC nightly run replaces it.
+- Deferred minors: a flag written but its metric lost if the run dies between the flag write and the metric emit
+  (retry then emits 0; tiny window, runbook names the flag/health page as source of truth); the forced-flag test
+  repeats the reason mapping; no handler test pins "run_monitor raises → nothing emitted".
+
+**Docs touched**
+- `docs/architecture.md` §9 (metrics, alarm table), `docs/runbook.md` (drift/performance meaning, OK emails).
+
 ## Phase 9 — Monitoring & continuous training (`phase-9/monitoring`)
 
 **Built**

@@ -55,7 +55,9 @@ def _get_json(fetch: Fetch, base: str, path: str) -> tuple[Response, Any]:
 def health_reports_model(fetch: Fetch, base: str) -> str | None:
     resp, data = _get_json(fetch, base, "/api/v1/health")
     version = data.get("model_version") if isinstance(data, dict) else None
-    if resp.status != HTTPStatus.OK or version != "1":
+    # Any released champion (versions are integer strings); the champion moves with retrains.
+    released = isinstance(version, str) and version.isdigit()
+    if resp.status != HTTPStatus.OK or not released:
         return f"status {resp.status}, model_version {version!r}"
     return None
 
