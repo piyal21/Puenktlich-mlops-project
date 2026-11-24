@@ -221,8 +221,8 @@ Tasks (status 2026-11-19; spec `docs/superpowers/specs/2026-11-18-phase-9-monito
 - [x] Training reads HF + live silver (live wins per day); Nov 1–12 rebuilt from HF raw (`make hf-raw-fill`).
 
 Exit criteria
-- Health page shows ≥ 7 days of daily metrics.
-- One full loop demonstrated end-to-end (can be forced by lowering a threshold in config): flag → retrain → gate decision → (release or rejection) → visible on the health page.
+- ✅ Health page shows ≥ 7 days of daily metrics. (2026-11-20: 7 days, 13–19 Nov; 19 Nov scored by v7 via the scheduled run.)
+- ✅ One full loop demonstrated end-to-end (can be forced by lowering a threshold in config): flag → retrain → gate decision → (release or rejection) → visible on the health page. (Real, twice: drift flag → v6 rejected; relaxed gate → v7 released, 2026-11-19.)
 
 You learn: data vs. prediction vs. performance drift, alert design, continuous training, closing the loop.
 
