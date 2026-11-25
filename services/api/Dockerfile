@@ -1,7 +1,7 @@
 # API image (Phase 5). Build context: repo root. linux/amd64 like Lambda x86_64.
 #   lambda (last stage = default for a plain `docker build`): Mangum handler for AWS Lambda.
 #   local:  the same code + uvicorn on :8000 (compose profile "app", `--target local`).
-FROM public.ecr.aws/lambda/python:3.12@sha256:a53086fc3118c5457097083ba3d1ccf1d8fdfcba9e7a90fbfc5d2b06c625215b AS base
+FROM public.ecr.aws/lambda/python:3.12@sha256:ad2f55fe2cf91a997bc986410cab85a41b7c7bae65ba881e69173a76d022133e AS base
 
 # OS security fixes newer than the pinned base image (CI fails on fixable HIGH/CRITICAL, Phase 8).
 # AL2023 locks updates to the image's release unless --releasever=latest;
