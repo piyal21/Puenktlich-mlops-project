@@ -103,3 +103,18 @@ make smoke-prod-live                              # the public site end to end
 - **Meaning:** spend is above plan (credits and refunds excluded).
 - **First checks:** Cost Explorer by service (Lambda, S3, CloudWatch, ECR storage, data transfer).
 - **Fix:** anything that raises cost needs the owner's decision (standing rule).
+
+## Lost console / CLI access (no alarm — seen 2026-11-26)
+
+- **Meaning:** signing in (console or `aws login --profile puenktlich`) shows "You don't have any
+  projects yet". The stack keeps running (site, 15-min ingest, nightly jobs), but nobody can
+  deploy, roll back a model or rotate keys. See `docs/security-review.md` S5.
+- **First checks:** is the site still live (`curl https://d37lj2a19ugjqm.cloudfront.net/api/v1/health`,
+  `board_generated_at` < 20 min old)? Same sign-in e-mail as when the account was created?
+- **Fix:** do **not** click "Create your first project" and change nothing else. Contact AWS
+  Support (Contact us → account and billing → sign-in) with: account ID, region `eu-north-1`,
+  project name, sign-in e-mail, the date access was last good, and the live URL as proof the
+  resources still run; ask them to restore access and keep every resource.
+- **After access returns:** CloudTrail → Event history (90 days) filtered on event names with
+  `Close`/`Delete`; `aws lambda list-functions`, `aws s3api list-buckets`; `make tf-plan` must show
+  "No changes".
