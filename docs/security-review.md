@@ -10,11 +10,11 @@ Scope: the controls in `architecture.md` §12, checked against the code and Terr
 
 | ID | Finding | Severity | Status |
 |---|---|---|---|
-| S1 | Cost-abuse ceiling: throttling allows ~ $4/day of Lambda/API spend (*estimate*), enough to burn the $100 Free-plan credits in weeks | Medium | Owner decision |
-| S2 | `/api/docs` loads Swagger UI from jsdelivr with a floating version (`swagger-ui-dist@5`), no integrity hash, on our origin | Low–Medium | Fix proposed |
+| S1 | Cost-abuse ceiling: throttling allowed ~ $4/day of Lambda/API spend (*estimate*), enough to burn the $100 Free-plan credits in weeks | Medium | Owner chose A: throttle 2/5 + traffic alarm (code ready; `make tf-apply` pending AWS access) |
+| S2 | `/api/docs` loads Swagger UI from jsdelivr with a floating version (`swagger-ui-dist@5`), no integrity hash, on our origin | Low–Medium | Fixed in code: pinned 5.34.1 + CSP path (image push + `make tf-apply` pending AWS access) |
 | S3 | API Gateway's default `execute-api` URL is public: callers can skip CloudFront (60 s board cache, security headers) | Low | Accept + document (S1 is the real limit) |
-| S4 | Dormant `puenktlich-sample-board` Lambda still may write the **live** public board key | Low | Fix proposed (needs AWS) |
-| S5 | Single sign-in identity, no second admin path: on 2026-11-26 the owner's sign-in showed "no projects" while the stack kept running | High (availability of operations) | Runbook + AWS Support |
+| S4 | Dormant `puenktlich-sample-board` Lambda still may write the **live** public board key | Low | Fixed in Terraform: write only in sample mode (`make tf-apply` pending AWS access) |
+| S5 | Single sign-in identity, no second admin path: on 2026-11-26 the owner's sign-in showed "no projects" while the stack kept running | High (availability of operations) | Runbook section added; owner contacting AWS Support |
 
 Accepted as before (ADR 0002, `infra/.trivyignore`), re-confirmed: SSE-S3 instead of KMS keys,
 no S3/CloudFront access logs, no WAF, no X-Ray, default CloudFront certificate. Each would cost
@@ -52,6 +52,12 @@ personal data — no client IPs are stored anywhere).
   load is one request) — cuts the request part, not the concurrency part; (b) add an alarm on
   API Lambda invocations (e.g. > 20,000 per hour) — the 10th and last free alarm; (c) accept.
   Recommended: (a) + (b); both are free and need one `make tf-apply`.
+- **Decision (owner, 2026-11-26): A** = (a) + (b). Alarm threshold set to **3,600 requests/hour**
+  (1 req/s for a full hour): with the 2 req/s throttle at most 7,200/hour can arrive, so the
+  20,000 first suggested could never fire. Honest limit: the throttle mainly caps requests; a slow
+  uncached path (≈ 2 s board read) at 2 req/s still uses ≈ 4 concurrent executions, so the compute
+  ceiling drops less than the request ceiling. The alarm is the real protection: it e-mails within
+  the hour. This is the 10th alarm (free-tier limit reached).
 
 ### S2 — Floating third-party script on the docs page (Low–Medium, fix proposed)
 

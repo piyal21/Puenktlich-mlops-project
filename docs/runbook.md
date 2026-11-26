@@ -27,6 +27,16 @@ make smoke-prod-live                              # the public site end to end
 - **Fix:** usually passes on its own (CloudFront caches boards for 60 s). Spread manual Lambda
   invocations out. A higher limit needs an AWS quota request (cost decision: ask the owner).
 
+## puenktlich-api-traffic — more than 3,600 API requests in one hour
+
+- **Meaning:** traffic far above a demo's (1 req/s for a whole hour). Possible scraping or abuse;
+  every uncached request runs the API Lambda and costs money (no hard spend cap on this account,
+  `docs/security-review.md` S1). The API throttle (2 req/s, burst 5) still applies.
+- **First checks:** API Gateway access logs `/aws/apigateway/puenktlich-api` (which paths, how many
+  429s); Lambda `Invocations` and `Duration` for `puenktlich-api`; Cost Explorer for today.
+- **Fix:** if it continues, lower `throttle_rate` / `throttle_burst` in `infra/modules/http_api` and
+  `make tf-plan` → `make tf-apply`. Anything that adds cost (WAF, more alarms) is an owner decision.
+
 ## puenktlich-sample-board-errors (only while `board_mode = "sample"`)
 
 - **Meaning:** the replayed sample board was not refreshed twice in a row.

@@ -482,6 +482,7 @@ the champion to S3 + SSM).
 | Empty stations | `EmptyStations` > 0 (a station had no departures yesterday: EVA drift or a feed gap) — Phase 7 |
 | API errors | API Gateway `5xx` > 5 in 5 min |
 | API throttling | Lambda `Throttles` > 0 |
+| API traffic | API Gateway `Count` > 3,600 in 1 h (abuse / cost early warning) — Phase 10, security review S1 |
 | Monitor missing | no `LabeledEvents` datapoint in 26 hourly periods (missing = breaching) — Phase 9 |
 | Drift | `RetrainRequested{reason=drift}` sum ≥ 1 in 1 h, i.e. the monitor wrote a drift retrain flag (step 8); ALARM email only, no OK email — Phase 10 (was a rolling `DriftShare` window, fired falsely 21–22 Nov 2026) |
 | Performance | `RetrainRequested{reason=performance}` sum ≥ 1 in 1 h (same rule) — Phase 10 |
@@ -569,8 +570,8 @@ infra/
 | Secrets | SSM SecureString; read at cold start; never logged |
 | Storage | All buckets: Block Public Access, SSE-S3, TLS-only bucket policy; web bucket readable only via CloudFront OAC |
 | Edge | CloudFront security headers policy (HSTS, CSP, X-Content-Type-Options, Referrer-Policy, frame-ancestors none) |
-| API abuse | API Gateway throttling (rate 10 req/s, burst 20); `hours` capped at 6; request body size limit; Pydantic validation |
-| Cost abuse | CloudFront caching for board responses (60 s); API Gateway throttling; budget alarms; no reserved concurrency (account limit is 5 concurrent executions) |
+| API abuse | API Gateway throttling (rate 2 req/s, burst 5 — Phase 10, security review S1); `hours` capped at 6; request body size limit; Pydantic validation |
+| Cost abuse | CloudFront caching for board responses (60 s); API Gateway throttling; API traffic alarm; budget alarms; no reserved concurrency (account limit is 5 concurrent executions) |
 | Supply chain | Pinned deps (`uv.lock`, `package-lock.json`); pip-audit/npm audit; Trivy image + config scans; Dependabot |
 | Code | Ruff `S` (bandit) rules; gitleaks; no `eval`, no `pickle` for artifacts; `defusedxml` for XML |
 | Model integrity | SHA-256 checksums in manifest, verified before load; models bucket versioned |

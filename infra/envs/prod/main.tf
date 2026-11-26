@@ -130,10 +130,15 @@ data "aws_iam_policy_document" "sample_board" {
       values   = ["samples/*"]
     }
   }
-  statement {
-    sid       = "WriteBoard"
-    actions   = ["s3:PutObject"]
-    resources = ["${local.data_arn}/${local.board_key}"]
+  # Security review S4: only while the sample board is the served board; in live mode a manual
+  # invoke must not be able to replace the live board.
+  dynamic "statement" {
+    for_each = var.board_mode == "sample" ? [1] : []
+    content {
+      sid       = "WriteBoard"
+      actions   = ["s3:PutObject"]
+      resources = ["${local.data_arn}/${local.board_key}"]
+    }
   }
 }
 
