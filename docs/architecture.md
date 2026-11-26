@@ -570,7 +570,7 @@ infra/
 | Secrets | SSM SecureString; read at cold start; never logged |
 | Storage | All buckets: Block Public Access, SSE-S3, TLS-only bucket policy; web bucket readable only via CloudFront OAC |
 | Edge | CloudFront security headers policy (HSTS, CSP, X-Content-Type-Options, Referrer-Policy, frame-ancestors none) |
-| API abuse | API Gateway throttling (rate 2 req/s, burst 5 — Phase 10, security review S1); `hours` capped at 6; request body size limit; Pydantic validation |
+| API abuse | API Gateway throttling (rate 2 req/s, burst 20 — Phase 10, security review S1); `hours` capped at 6; request body size limit; Pydantic validation |
 | Cost abuse | CloudFront caching for board responses (60 s); API Gateway throttling; API traffic alarm; budget alarms; no reserved concurrency (account limit is 5 concurrent executions) |
 | Supply chain | Pinned deps (`uv.lock`, `package-lock.json`); pip-audit/npm audit; Trivy image + config scans; Dependabot |
 | Code | Ruff `S` (bandit) rules; gitleaks; no `eval`, no `pickle` for artifacts; `defusedxml` for XML |

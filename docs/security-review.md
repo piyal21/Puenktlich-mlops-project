@@ -10,7 +10,7 @@ Scope: the controls in `architecture.md` §12, checked against the code and Terr
 
 | ID | Finding | Severity | Status |
 |---|---|---|---|
-| S1 | Cost-abuse ceiling: throttling allowed ~ $4/day of Lambda/API spend (*estimate*), enough to burn the $100 Free-plan credits in weeks | Medium | Owner chose A: throttle 2/5 + traffic alarm (code ready; `make tf-apply` pending AWS access) |
+| S1 | Cost-abuse ceiling: throttling allowed ~ $4/day of Lambda/API spend (*estimate*), enough to burn the $100 Free-plan credits in weeks | Medium | Owner chose A: throttle 2 req/s (burst 20) + traffic alarm (code ready; `make tf-apply` pending AWS access) |
 | S2 | `/api/docs` loads Swagger UI from jsdelivr with a floating version (`swagger-ui-dist@5`), no integrity hash, on our origin | Low–Medium | Fixed in code: pinned 5.34.1 + CSP path (image push + `make tf-apply` pending AWS access) |
 | S3 | API Gateway's default `execute-api` URL is public: callers can skip CloudFront (60 s board cache, security headers) | Low | Accept + document (S1 is the real limit) |
 | S4 | Dormant `puenktlich-sample-board` Lambda still may write the **live** public board key | Low | Fixed in Terraform: write only in sample mode (`make tf-apply` pending AWS access) |
@@ -31,7 +31,7 @@ personal data — no client IPs are stored anywhere).
 | Secrets | ✅ DB API keys in SSM SecureString, outside Terraform state; `SecretStr` in settings; sent only as request headers, never logged | `config.py`, `timetables/client.py`, `modules/ssm` |
 | Storage | ✅ all 4 buckets: Block Public Access, `BucketOwnerEnforced`, SSE-S3, versioning, TLS-only policy; web bucket readable only by this CloudFront distribution (OAC + `AWS:SourceArn`); state bucket `prevent_destroy`, lockfile, encrypted | `modules/data_lake`, `modules/web_cdn`, `bootstrap/` |
 | Edge | ✅ HSTS 1 year, strict CSP (`script-src 'self'`, `frame-ancestors 'none'`), `nosniff`, `DENY`, `strict-origin-when-cross-origin`; HTTPS only, TLS 1.2 to the origin | `modules/web_cdn`; ⚠️ docs page: S2 |
-| API abuse | ✅ throttling 10 req/s, burst 20; `hours` 1–6; body ≤ 4,096 bytes (411/413); `extra="forbid"` + patterns/lengths on `/predict`; station search ≤ 50 chars; errors are problem+json without stack traces or submitted values; request ids validated before reuse | `modules/http_api`, `services/api/app/` |
+| API abuse | ✅ throttling (was 10 req/s, burst 20; now 2 req/s, burst 20 — S1); `hours` 1–6; body ≤ 4,096 bytes (411/413); `extra="forbid"` + patterns/lengths on `/predict`; station search ≤ 50 chars; errors are problem+json without stack traces or submitted values; request ids validated before reuse | `modules/http_api`, `services/api/app/` |
 | Cost abuse | ⚠️ cache + throttling + budget e-mail exist, but see S1 | |
 | Supply chain | ✅ `uv.lock` (hashes), `package-lock.json`, pip-audit (both images + MLflow), `npm audit --audit-level=high`, Trivy config + image scans, gitleaks on full history, Dependabot weekly; ECR tags immutable, scan on push | `ci.yml`, `modules/ecr` |
 | Code | ✅ Ruff `S`; untrusted XML only through `defusedxml`; no `pickle`/`eval`/`shell=True`; the one `subprocess` call is a fixed `git rev-parse` argv; frontend has no `innerHTML`/`dangerouslySetInnerHTML` | `timetables/parser.py`, `training/pipeline.py` |
@@ -52,21 +52,27 @@ personal data — no client IPs are stored anywhere).
   load is one request) — cuts the request part, not the concurrency part; (b) add an alarm on
   API Lambda invocations (e.g. > 20,000 per hour) — the 10th and last free alarm; (c) accept.
   Recommended: (a) + (b); both are free and need one `make tf-apply`.
-- **Decision (owner, 2026-11-26): A** = (a) + (b). Alarm threshold set to **3,600 requests/hour**
+- **Decision (owner, 2026-11-26): A** = (a) + (b). **Review correction:** the throttle is one
+  bucket for the whole site, not per visitor, and the station search sent one request per
+  keystroke — burst 5 would have returned 429s to a single person typing. Now: rate 2 req/s,
+  **burst 20**, and the search waits 250 ms after the last keystroke. Anyone sending > 2 req/s
+  can still make the API answer 429 for everybody (an availability trade-off accepted for cost).
+  The traffic alarm exists in live mode only (sample mode needs that slot for its own alarm). Alarm threshold set to **3,600 requests/hour**
   (1 req/s for a full hour): with the 2 req/s throttle at most 7,200/hour can arrive, so the
   20,000 first suggested could never fire. Honest limit: the throttle mainly caps requests; a slow
   uncached path (≈ 2 s board read) at 2 req/s still uses ≈ 4 concurrent executions, so the compute
   ceiling drops less than the request ceiling. The alarm is the real protection: it e-mails within
   the hour. This is the 10th alarm (free-tier limit reached).
 
-### S2 — Floating third-party script on the docs page (Low–Medium, fix proposed)
+### S2 — Floating third-party script on the docs page (Low–Medium, fixed in code)
 
 - **What:** FastAPI's default Swagger UI page loads `https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/…`.
   `@5` follows every new 5.x release, and the docs CSP allows all of `cdn.jsdelivr.net`. A bad
   release (or a hijacked package) would run on our origin. Impact is limited (no cookies, no
   login, read-only data), but it could deface the site or misuse the API under our name.
-- **Fix:** serve the docs page with an **exact** version (e.g. `swagger-ui-dist@5.x.y`) and
-  narrow the docs CSP to that path (`https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.x.y/`).
+- **Fix (done):** the API serves the docs page with **`swagger-ui-dist@5.34.1`** (released
+  2026-10-30) and the docs CSP allows only `https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.34.1/`;
+  a unit test keeps the two in sync.
   jsdelivr npm files are immutable per version. No new dependency. Code + test now; the CSP
   part needs `make tf-apply`.
 
@@ -79,7 +85,7 @@ personal data — no client IPs are stored anywhere).
   checked in the Lambda adds a secret to rotate. The cost risk is the same as S1 and is handled
   there.
 
-### S4 — Dormant sample-board Lambda can overwrite the live board (Low, fix proposed)
+### S4 — Dormant sample-board Lambda can overwrite the live board (Low, fixed in Terraform)
 
 - **What:** since `board_mode = "live"` the `puenktlich-sample-board` Lambda has no schedule, but
   its role still has `s3:PutObject` on `live/boards/latest.json.gz`. A manual invoke would replace

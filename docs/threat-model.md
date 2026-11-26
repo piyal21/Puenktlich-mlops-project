@@ -42,7 +42,7 @@ No personal data is stored: no accounts, no cookies, no client IPs in logs.
 | **R**epudiation | "Who changed this?" | CloudTrail event history (90 days); git history; MLflow lineage; `control/decisions/` + `monitoring/retrains.json`; API access logs with request id (14 days) | No S3/CloudFront access logs (cost) |
 | **I**nformation disclosure | DB keys leak | SecureString, not in Terraform state (old versions deleted 2026-11-19), `SecretStr`, never logged | Rotation still pending (owner) |
 | | Errors reveal internals | problem+json without stack traces or submitted values | — |
-| **D**enial of service / cost | Traffic flood or scraping | CloudFront 60 s board cache; throttle 2 req/s, burst 5; account concurrency 5; `puenktlich-api-traffic` alarm; budget e-mail | No hard spend cap; public `execute-api` URL (S1, S3) |
+| **D**enial of service / cost | Traffic flood or scraping | CloudFront 60 s board cache; throttle 2 req/s, burst 20; account concurrency 5; `puenktlich-api-traffic` alarm; budget e-mail | No hard spend cap; public `execute-api` URL (S1, S3) |
 | | Upstream outage or rate limit | Rate limiter (50 calls/min; the API allows 60), stop near the Lambda deadline; board marked stale after 20 min; ingestion alarms | Board goes stale, site stays up |
 | | Lost AWS access | Runbook "lost console access"; AWS Support | Operations blocked until restored (S5) |
 | **E**levation of privilege | A Lambda bug used to reach more | One role per Lambda, exact prefixes/ARNs, no `*`; the public API is read-only | — |

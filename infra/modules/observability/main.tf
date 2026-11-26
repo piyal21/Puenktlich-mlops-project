@@ -52,9 +52,9 @@ resource "aws_cloudwatch_metric_alarm" "api_throttles" {
 
 # Security review S1: early warning for traffic abuse (no hard spend cap exists on this account).
 # 3,600 requests/hour = 1 req/s sustained for an hour, half of what the 2 req/s throttle allows.
-# This is the 10th alarm (free-tier limit).
+# Live mode only: in sample mode `sample_board_errors` takes the 10th slot (free tier: 10 alarms).
 resource "aws_cloudwatch_metric_alarm" "api_traffic" {
-  count               = var.enable_alarms ? 1 : 0
+  count               = var.enable_alarms && var.board_mode == "live" ? 1 : 0
   alarm_name          = "puenktlich-api-traffic"
   alarm_description   = "More than 3,600 API requests in one hour (possible abuse; cost risk)."
   namespace           = "AWS/ApiGateway"

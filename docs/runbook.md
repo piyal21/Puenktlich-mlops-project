@@ -31,7 +31,7 @@ make smoke-prod-live                              # the public site end to end
 
 - **Meaning:** traffic far above a demo's (1 req/s for a whole hour). Possible scraping or abuse;
   every uncached request runs the API Lambda and costs money (no hard spend cap on this account,
-  `docs/security-review.md` S1). The API throttle (2 req/s, burst 5) still applies.
+  `docs/security-review.md` S1). The API throttle (2 req/s, burst 20) still applies.
 - **First checks:** API Gateway access logs `/aws/apigateway/puenktlich-api` (which paths, how many
   429s); Lambda `Invocations` and `Duration` for `puenktlich-api`; Cost Explorer for today.
 - **Fix:** if it continues, lower `throttle_rate` / `throttle_burst` in `infra/modules/http_api` and
