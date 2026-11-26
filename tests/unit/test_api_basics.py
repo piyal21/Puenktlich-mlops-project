@@ -1,13 +1,16 @@
 import re
+from pathlib import Path
 
 import pytest
 from httpx import Response
 
+from app.main import SWAGGER_UI_BASE
 from dbdelay.storage import ObjectStore
 from tests.api_support import client, make_deps
 from tests.boards import NOW, departure, live_board
 
 PROBLEM = "application/problem+json"
+REPO = Path(__file__).resolve().parents[2]
 
 
 def assert_problem(response: Response, status: int, type_: str) -> dict[str, object]:
@@ -89,6 +92,24 @@ def test_openapi_docs(s3_store: ObjectStore) -> None:
     api = client(make_deps(s3_store))
     assert api.get("/api/docs").status_code == 200
     assert "/api/v1/stations" in api.get("/api/openapi.json").json()["paths"]
+
+
+def test_docs_page_loads_pinned_swagger_ui(s3_store: ObjectStore) -> None:
+    # Security review S2: a floating `swagger-ui-dist@5` would run any future 5.x on our origin.
+    html = client(make_deps(s3_store)).get("/api/docs").text
+    assert "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.34.1/swagger-ui-bundle.js" in html
+    assert "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.34.1/swagger-ui.css" in html
+    assert "swagger-ui-dist@5/" not in html
+
+
+def test_docs_csp_allows_only_the_pinned_swagger_ui() -> None:
+    tf = (REPO / "infra" / "modules" / "web_cdn" / "main.tf").read_text(encoding="utf-8")
+    sources = re.findall(r'"(?:script|style)-src ([^"]+)"', tf)
+    docs = [s for s in sources if "unsafe-inline" in s]  # the Swagger UI policy only
+    assert len(docs) == 2
+    for policy in docs:
+        jsdelivr = [token for token in policy.split() if "jsdelivr" in token]
+        assert jsdelivr == [SWAGGER_UI_BASE]
 
 
 def test_cors_only_when_configured(s3_store: ObjectStore) -> None:

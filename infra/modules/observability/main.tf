@@ -50,6 +50,26 @@ resource "aws_cloudwatch_metric_alarm" "api_throttles" {
   ok_actions          = [aws_sns_topic.alerts.arn]
 }
 
+# Security review S1: early warning for traffic abuse (no hard spend cap exists on this account).
+# 3,600 requests/hour = 1 req/s sustained for an hour, half of what the 2 req/s throttle allows.
+# Live mode only: in sample mode `sample_board_errors` takes the 10th slot (free tier: 10 alarms).
+resource "aws_cloudwatch_metric_alarm" "api_traffic" {
+  count               = var.enable_alarms && var.board_mode == "live" ? 1 : 0
+  alarm_name          = "puenktlich-api-traffic"
+  alarm_description   = "More than 3,600 API requests in one hour (possible abuse; cost risk)."
+  namespace           = "AWS/ApiGateway"
+  metric_name         = "Count"
+  dimensions          = { ApiId = var.api_id }
+  statistic           = "Sum"
+  period              = 3600
+  evaluation_periods  = 1
+  threshold           = 3600
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  ok_actions          = [aws_sns_topic.alerts.arn]
+}
+
 resource "aws_cloudwatch_metric_alarm" "sample_board_errors" {
   count               = var.enable_alarms && var.board_mode == "sample" ? 1 : 0
   alarm_name          = "puenktlich-sample-board-errors"
@@ -161,38 +181,38 @@ resource "aws_cloudwatch_metric_alarm" "monitor_missing" {
   ok_actions          = [aws_sns_topic.alerts.arn]
 }
 
+# Drift / performance: alarm = retrain trigger. The monitor emits RetrainRequested{reason} = 1
+# only when it writes control/retrain_requested.json (3 calendar days in a row, same model, no
+# open request). Rolling 24 h windows on DriftShare/BrierRatio could not express that and fired
+# falsely on 21 + 22 Nov 2026. No OK email: "OK" only means the hour passed.
 resource "aws_cloudwatch_metric_alarm" "drift" {
   count               = var.enable_alarms ? 1 : 0
   alarm_name          = "puenktlich-drift"
-  alarm_description   = "Share of drifted model inputs above 0.30 on 3 days in a row (retrain requested)."
+  alarm_description   = "Retrain requested (reason drift): share of drifted model inputs above 0.30 on 3 days in a row, same model."
   namespace           = "Puenktlich"
-  metric_name         = "DriftShare"
-  dimensions          = { service = "monitor" }
-  statistic           = "Maximum"
-  period              = 86400
-  evaluation_periods  = 3
-  datapoints_to_alarm = 3
-  threshold           = 0.30
-  comparison_operator = "GreaterThanThreshold"
+  metric_name         = "RetrainRequested"
+  dimensions          = { service = "monitor", reason = "drift" }
+  statistic           = "Sum"
+  period              = 3600
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
   treat_missing_data  = "notBreaching"
   alarm_actions       = [aws_sns_topic.alerts.arn]
-  ok_actions          = [aws_sns_topic.alerts.arn]
 }
 
 resource "aws_cloudwatch_metric_alarm" "performance" {
   count               = var.enable_alarms ? 1 : 0
   alarm_name          = "puenktlich-performance"
-  alarm_description   = "Daily Brier score above 1.10 x the champion's test Brier on 3 days in a row."
+  alarm_description   = "Retrain requested (reason performance): daily Brier above 1.10 x the champion's test Brier on 3 days in a row, same model."
   namespace           = "Puenktlich"
-  metric_name         = "BrierRatio"
-  dimensions          = { service = "monitor" }
-  statistic           = "Maximum"
-  period              = 86400
-  evaluation_periods  = 3
-  datapoints_to_alarm = 3
-  threshold           = 1.10
-  comparison_operator = "GreaterThanThreshold"
+  metric_name         = "RetrainRequested"
+  dimensions          = { service = "monitor", reason = "performance" }
+  statistic           = "Sum"
+  period              = 3600
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
   treat_missing_data  = "notBreaching"
   alarm_actions       = [aws_sns_topic.alerts.arn]
-  ok_actions          = [aws_sns_topic.alerts.arn]
 }

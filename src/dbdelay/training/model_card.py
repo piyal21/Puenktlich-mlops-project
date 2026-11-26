@@ -1,20 +1,37 @@
 """Model card draft (markdown) written with every trained model (prd §8)."""
 
+import calendar
 from collections.abc import Mapping
+from datetime import date
 
 from dbdelay.features.spec import RiskThresholds
 from dbdelay.training.evaluate import SplitReport, TrainingReport
 from dbdelay.training.gate import SLICE_COLUMN
 
 _METRICS = (("Brier", "brier"), ("ROC-AUC", "roc_auc"), ("PR-AUC", "pr_auc"), ("ECE", "ece"))
+MONTHS = 12
 LIMITATIONS = (
     "Timetable/calendar features only (v1): no live context, weather or incidents.",
-    "Trained on December to August history; September to November months were never seen "
-    "(`month` is extrapolated).",
     "The valid split drives early stopping, grid selection and calibration; only the test "
     "split is untouched.",
     "Label: departure ≥ 6 min late; cancelled departures are excluded, not predicted.",
 )
+
+
+def unseen_months(start: date, end: date) -> list[int]:
+    """Calendar months outside the train window, in order after ``end`` (wrapping the year)."""
+    span = (end.year - start.year) * MONTHS + end.month - start.month + 1
+    if span >= MONTHS:
+        return []
+    return [(end.month + i - 1) % MONTHS + 1 for i in range(1, MONTHS + 1 - span)]
+
+
+def _months_line(start: date, end: date) -> str:
+    missing = unseen_months(start, end)
+    if not missing:
+        return "All 12 months are in the training window."
+    names = ", ".join(calendar.month_name[m] for m in missing)
+    return f"Months never seen in training: {names} (`month` is extrapolated for them)."
 
 
 def _fmt(value: float | None) -> str:
@@ -91,7 +108,9 @@ def render_model_card(
         f"Low < {risk.medium:.2f} ≤ Medium < {risk.high:.2f} ≤ High (calibrated `p_late`).",
         "",
         "## Limitations",
-        *(f"- {item}" for item in LIMITATIONS),
+        f"- {LIMITATIONS[0]}",
+        f"- {_months_line(report.train_start, report.train_end)}",
+        *(f"- {item}" for item in LIMITATIONS[1:]),
         "",
     ]
     return "\n".join(lines)

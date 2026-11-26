@@ -1,7 +1,7 @@
 # Runbook — alarms
 
 Every alarm sends an email from the SNS topic `puenktlich-alerts` (and a second email when it returns
-to OK). Region `eu-north-1`. All commands run on the laptop after `aws login --profile puenktlich`.
+to OK — except *drift* and *performance*, which email only "retrain requested"). Region `eu-north-1`. All commands run on the laptop after `aws login --profile puenktlich`.
 
 Useful everywhere:
 
@@ -26,6 +26,16 @@ make smoke-prod-live                              # the public site end to end
   backfill or another Lambda burst running at the same time?
 - **Fix:** usually passes on its own (CloudFront caches boards for 60 s). Spread manual Lambda
   invocations out. A higher limit needs an AWS quota request (cost decision: ask the owner).
+
+## puenktlich-api-traffic — more than 3,600 API requests in one hour
+
+- **Meaning:** traffic far above a demo's (1 req/s for a whole hour). Possible scraping or abuse;
+  every uncached request runs the API Lambda and costs money (no hard spend cap on this account,
+  `docs/security-review.md` S1). The API throttle (2 req/s, burst 20) still applies.
+- **First checks:** API Gateway access logs `/aws/apigateway/puenktlich-api` (which paths, how many
+  429s); Lambda `Invocations` and `Duration` for `puenktlich-api`; Cost Explorer for today.
+- **Fix:** if it continues, lower `throttle_rate` / `throttle_burst` in `infra/modules/http_api` and
+  `make tf-plan` → `make tf-apply`. Anything that adds cost (WAF, more alarms) is an owner decision.
 
 ## puenktlich-sample-board-errors (only while `board_mode = "sample"`)
 
@@ -68,19 +78,29 @@ make smoke-prod-live                              # the public site end to end
 - **Fix:** after fixing the cause, re-run the missed days (idempotent):
   `aws lambda invoke --function-name puenktlich-monitor --payload '{"day":"YYYY-MM-DD"}' --cli-binary-format raw-in-base64-out out.json …`
 
-## puenktlich-drift — drifted share of model inputs above 0.30 on 3 days in a row
+## puenktlich-drift — retrain requested (reason drift)
 
-- **Meaning:** the trains the model sees differ from its training data (new lines, timetable change,
-  a station renamed). The monitor has written `control/retrain_requested.json` (reason `drift`).
+- **Meaning:** the monitor has just written `control/retrain_requested.json` with reason `drift`:
+  drifted share of model inputs above 0.30 on 3 calendar days in a row, same model, no open request.
+  The trains the model sees differ from its training data (new lines, timetable change, a station
+  renamed). The alarm watches `RetrainRequested{reason=drift}`, so email = flag. There is no
+  "back to OK" email; the alarm returns to OK on its own, at the latest after the next nightly monitor
+  run (CloudWatch keeps the last datapoint while newer ones are missing). A second flag during that
+  time sends no email, so the source of truth is `control/retrain_requested.json` / the health page.
+- **History:** until Phase 10 this alarm used rolling 24 h windows on `DriftShare`; manual backfill
+  runs on 19 Nov 2026 made it fire falsely on 21 + 22 Nov without any retrain request.
 - **First checks:** health page → "Data drift on the last checked day" (which inputs, which scores);
   timetable change dates (mid-December); `excluded_rows` and gap flags (a feed problem looks like drift).
 - **Fix:** run the retrain loop: `make retrain-sync` → Airflow `drift_watch` picks it up within 30 min
   (`make airflow-up`, keep the laptop awake) → `make retrain-publish`. A rejected challenger keeps the
   current model; that is a valid outcome and shows on the health page.
 
-## puenktlich-performance — daily Brier above 1.10 × the champion's test Brier on 3 days in a row
+## puenktlich-performance — retrain requested (reason performance)
 
-- **Meaning:** predictions are worse on real outcomes than in the test period. Known cause (Phase 7):
+- **Meaning:** the monitor has just written a retrain flag with reason `performance`: daily Brier
+  above 1.10 × the champion's test Brier on 3 calendar days in a row, same model (alarm on
+  `RetrainRequested{reason=performance}`, ALARM email only). Predictions are worse on real
+  outcomes than in the test period. Known cause (Phase 7):
   HF history probably undercounts lateness, so a model trained on it underestimates live late rates —
   compare "actual vs predicted late rate" on the health page.
 - **First checks:** health page charts (is it calibration — predicted below actual — or ranking — AUC down?);
@@ -93,3 +113,18 @@ make smoke-prod-live                              # the public site end to end
 - **Meaning:** spend is above plan (credits and refunds excluded).
 - **First checks:** Cost Explorer by service (Lambda, S3, CloudWatch, ECR storage, data transfer).
 - **Fix:** anything that raises cost needs the owner's decision (standing rule).
+
+## Lost console / CLI access (no alarm — seen 2026-11-26)
+
+- **Meaning:** signing in (console or `aws login --profile puenktlich`) shows "You don't have any
+  projects yet". The stack keeps running (site, 15-min ingest, nightly jobs), but nobody can
+  deploy, roll back a model or rotate keys. See `docs/security-review.md` S5.
+- **First checks:** is the site still live (`curl https://d37lj2a19ugjqm.cloudfront.net/api/v1/health`,
+  `board_generated_at` < 20 min old)? Same sign-in e-mail as when the account was created?
+- **Fix:** do **not** click "Create your first project" and change nothing else. Contact AWS
+  Support (Contact us → account and billing → sign-in) with: account ID, region `eu-north-1`,
+  project name, sign-in e-mail, the date access was last good, and the live URL as proof the
+  resources still run; ask them to restore access and keep every resource.
+- **After access returns:** CloudTrail → Event history (90 days) filtered on event names with
+  `Close`/`Delete`; `aws lambda list-functions`, `aws s3api list-buckets`; `make tf-plan` must show
+  "No changes".

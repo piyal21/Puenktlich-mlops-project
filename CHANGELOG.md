@@ -3,6 +3,78 @@
 One entry per phase branch (owner rule, from Phase 2 on). Phases 0–1 are described in [`Phases/`](Phases/).
 Only measured numbers; anything not measured is `TBD`.
 
+## Phase 10 — Hardening & showcase (in progress)
+
+### `phase-10/security-review` — security review, threat model, model card
+
+**Built**
+- `docs/security-review.md`: all 11 controls of `architecture.md` §12 checked against code + Terraform;
+  findings S1–S5. `docs/threat-model.md`: one-page STRIDE-lite. `docs/model_card.md`: champion v7 with
+  test results and 7 days of live results (fixes the README link that pointed nowhere).
+- S1 (owner chose A): API throttle 2 req/s, burst 20 (was 10/20); new alarm `puenktlich-api-traffic`
+  (> 3,600 requests/hour, live mode only → 10 alarms); station search waits 250 ms after typing.
+- S2: `/api/docs` served with Swagger UI pinned to 5.34.1; docs CSP allows only that path.
+- S4: the dormant sample-board Lambda may write the board only in sample mode.
+- S5: runbook "lost console access" section.
+- Model card generator names the months missing from the train window (was hard-coded "December to August").
+
+**Key decisions**
+- Throttle is one bucket for the whole site (review finding): burst 20 instead of 5 so one person typing
+  does not get 429s; anyone sending > 2 req/s can still cause 429s for everyone (accepted for cost).
+- Traffic alarm at 3,600/hour, not 20,000: with 2 req/s at most 7,200/hour can arrive.
+- Swagger UI 5.34.1 (27 days old) instead of the newest 5.36.0 (3 days old).
+- S3 and CloudFront access logs stay off (cost; no client IPs stored) — closes the Phase 6 "revisit" note.
+
+**Tested**
+- `make check`: 692 passed, coverage 95.72 % (before the model card fix; its tests: 4 passed).
+- `make web-check`: 87 passed. `terraform fmt` + `validate` (prod, fresh data dir): OK; `make tf-scan`: exit 0.
+- Code review (opus): 1 Important (shared throttle + per-keystroke search) fixed test-first; 3 minors fixed
+  (alarm count in sample mode, stale review wording); nits deferred.
+- Not applied to AWS yet: owner has no AWS access since 2026-11-26.
+
+**Known gaps / open items**
+- To deploy once access is back: API image (Swagger pin), web (debounce), `make tf-apply` (throttle, alarm,
+  docs CSP, sample-board policy); then smoke + headless-Chrome check of `/api/docs`.
+- Deferred nits: Swagger UI validator badge is blocked by the CSP (console error only; `validatorUrl: None`
+  would silence it); docs page title changed to "Pünktlich API - docs".
+
+**Docs touched**
+- `docs/security-review.md`, `docs/threat-model.md`, `docs/model_card.md` (new); `docs/architecture.md` §9 + §12;
+  `docs/runbook.md` (api-traffic, lost access).
+
+### `phase-10/retrain-alarm` — drift/performance alarms = retrain trigger
+
+**Built**
+- Monitor emits `RetrainRequested` (dimensions `service=monitor`, `reason=drift|performance`) on every run:
+  1 when the run wrote a new retrain flag for that reason, else 0.
+- Alarms `puenktlich-drift` / `puenktlich-performance` now watch it (Sum ≥ 1 in 1 h, ALARM email only).
+  Names unchanged; 9 alarms, 9 custom metrics (free tier 10/10).
+- Smoke check `health_reports_model` accepts any released champion (had `"1"` hard-coded; failed since v7).
+
+**Key decisions**
+- Why: `puenktlich-drift` fired falsely on 21 + 22 Nov 2026 (ALARM 05:04 → OK 19:04). Rolling 24 h `Maximum`
+  windows on `DriftShare` picked up the 19 Nov manual backfill datapoints; the trigger (3 calendar days, same model,
+  no open request) correctly requested nothing. Alarm windows cannot express that rule, so the alarm now follows the
+  trigger's own decision. Spec `docs/superpowers/specs/2026-11-24-retrain-requested-alarm-design.md`.
+- No OK email for these two ("OK" only means time passed). Forced demo flags alarm too (they are real flags).
+- `DriftShare` / `BrierRatio` stay as metrics without alarms.
+
+**Tested**
+- `make check`: 684 passed, coverage 96.16 %; smoke unit tests 22 passed; `uv run pre-commit run --all-files` clean.
+- `make tf-fmt`, `make tf-validate`, `make tf-scan`: exit 0.
+- AWS (2026-11-24): API image `7caa57c3a1ce`; `make tf-apply` 0 added, 5 changed, 0 destroyed. Manual monitor run →
+  `RetrainRequested` listed for both reasons; both alarms `OK` on the new rule, no OK actions; 0 alarms not OK;
+  `make smoke-prod-live` 11/11.
+
+**Known gaps / open items**
+- Verification run used 23 Nov before its ETL ran → `no_data` placeholder until the 03:30 UTC nightly run replaces it.
+- Deferred minors: a flag written but its metric lost if the run dies between the flag write and the metric emit
+  (retry then emits 0; tiny window, runbook names the flag/health page as source of truth); the forced-flag test
+  repeats the reason mapping; no handler test pins "run_monitor raises → nothing emitted".
+
+**Docs touched**
+- `docs/architecture.md` §9 (metrics, alarm table), `docs/runbook.md` (drift/performance meaning, OK emails).
+
 ## Phase 9 — Monitoring & continuous training (`phase-9/monitoring`)
 
 **Built**

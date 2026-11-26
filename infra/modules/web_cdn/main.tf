@@ -199,11 +199,12 @@ resource "aws_cloudfront_response_headers_policy" "docs" {
 
   security_headers_config {
     content_security_policy {
-      # FastAPI's Swagger UI page: inline bootstrap script + assets from jsdelivr.
+      # FastAPI's Swagger UI page: inline bootstrap script + one pinned Swagger UI release from
+      # jsdelivr (security review S2; must match SWAGGER_UI_BASE in services/api/app/main.py).
       content_security_policy = join("; ", [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
-        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.34.1/",
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.34.1/",
         "img-src 'self' data: https://fastapi.tiangolo.com",
         "connect-src 'self'",
         "object-src 'none'",
